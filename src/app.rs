@@ -164,11 +164,41 @@ impl Task {
     }
 
     fn toggle_done(&mut self) {
+        const PRIORITY_KEY: &str = "Pri:";
         if self.done {
             self.done = false;
+            let priority_kv = self
+                .text
+                .split_whitespace()
+                .skip(1)
+                .find(|word| word.starts_with(PRIORITY_KEY));
+            if let Some(pri) = priority_kv {
+                let pri = pri.strip_prefix(PRIORITY_KEY).unwrap();
+                let pri = format!("({}) ", pri);
+                self.text = self.text.get(0..2).unwrap().to_string()
+                    + &pri
+                    + &self
+                        .text
+                        .get(2..)
+                        .unwrap()
+                        .to_string()
+                        .replace(&(" ".to_string() + &priority_kv.unwrap()), "")
+            }
             self.text = self.text.replace(DONE_PREFIX, PENDING_PREFIX);
         } else {
             self.done = true;
+            let mut words = self.text.split_whitespace().skip(1);
+            if let Some(word) = words.next() {
+                let word = word.to_string();
+                if word.len() == 3 && word.starts_with("(") && word.ends_with(")") {
+                    if let Some(pri) = word.get(1..2).clone() {
+                        self.text = self.text.replace(&(word.clone() + &" "), "")
+                            + &" "
+                            + &PRIORITY_KEY.to_string()
+                            + &pri;
+                    }
+                }
+            }
             self.text = self.text.replace(PENDING_PREFIX, DONE_PREFIX);
         }
     }
