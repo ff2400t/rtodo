@@ -1,4 +1,4 @@
-use std::fs::read_to_string;
+use std::{env, fs::read_to_string};
 
 use app::{run_app, Model};
 
@@ -7,17 +7,12 @@ mod errors;
 mod tui;
 
 fn main() -> color_eyre::Result<()> {
-    let file_name = "./todo.txt";
-    let binding = match read_to_string(file_name) {
-        Ok(content) => content,
-        Err(_) => {
-            eprintln!("Failed to find the todo.txt file in the current directory");
-            return Ok(());
-        }
-    };
-    let lines = binding.lines();
-
-    let tasks: _ = lines.map(|a| a).collect();
+    let mut pwd = env::current_dir().expect("Failed to find the Present working directory");
+    pwd.push("todo.txt");
+    let file_name = pwd.as_path();
+    let binding = read_to_string(file_name)
+        .expect("Failed to find the todo.txt file in the current directory");
+    let tasks = binding.lines().collect();
 
     let mut model = Model::new(tasks);
     errors::install_hooks()?;

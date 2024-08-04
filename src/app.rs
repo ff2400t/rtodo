@@ -4,7 +4,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Padding},
     Frame,
 };
-use std::{fs::write, time::Duration};
+use std::{fs::write, path::Path, time::Duration};
 
 use crate::tui::Tui;
 
@@ -29,7 +29,7 @@ impl Model {
         }
     }
 
-    pub fn write(&self, file_name: &str) -> std::io::Result<()> {
+    pub fn write(&self, file_name: &Path) -> std::io::Result<()> {
         let content = self
             .tasks
             .iter()
