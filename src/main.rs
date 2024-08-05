@@ -5,6 +5,7 @@ use app::{run_app, Model};
 mod app;
 mod errors;
 mod tui;
+mod ui;
 
 fn main() -> color_eyre::Result<()> {
     let mut pwd = env::current_dir().expect("Failed to find the Present working directory");

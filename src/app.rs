@@ -1,26 +1,18 @@
 use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
-    layout::{self, Constraint, Direction, Layout, Rect},
-    style::{palette::tailwind, Color, Style, Styled},
-    widgets::{Block, Borders, List, ListItem, ListState, Padding, Paragraph},
-    Frame,
+    widgets::ListState,
 };
 use std::{fs::write, path::Path, time::Duration};
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::tui::Tui;
-
-const SELECTED_STYLE_FG: Color = tailwind::BLUE.c300;
-const TEXT_COLOR: Color = tailwind::SLATE.c200;
-const COMPLETED_TEXT_COLOR: Color = tailwind::GREEN.c500;
 const DONE_PREFIX: &str = "x ";
 const PENDING_PREFIX: &str = "☐ ";
 
 pub struct Model {
-    state: ListState,
-    tasks: Vec<Task>,
-    running_state: RunningState,
-    input: Option<Input>,
+    pub state: ListState,
+    pub tasks: Vec<Task>,
+    pub running_state: RunningState,
+    pub input: Option<Input>,
 }
 
 impl Model {
@@ -67,10 +59,13 @@ pub enum Message {
     EditorKey(KeyEvent),
 }
 
-pub fn run_app(terminal: &mut Tui, mut model: &mut Model) -> color_eyre::Result<Option<Message>> {
+pub fn run_app(
+    terminal: &mut crate::tui::Tui,
+    mut model: &mut Model,
+) -> color_eyre::Result<Option<Message>> {
     model.state.select(Some(0));
     while model.running_state != RunningState::Done {
-        terminal.draw(|f| view(&mut model, f))?;
+        terminal.draw(|f| crate::ui::view(&mut model, f))?;
 
         let mut current_msg = handle_events(model)?;
 
@@ -80,74 +75,6 @@ pub fn run_app(terminal: &mut Tui, mut model: &mut Model) -> color_eyre::Result<
     }
 
     Ok(None)
-}
-
-fn view(model: &mut Model, f: &mut Frame<'_>) {
-    match model.running_state {
-        RunningState::Running => {
-            let block = Block::new()
-                .title("Todo List")
-                .title_alignment(ratatui::layout::Alignment::Center)
-                .borders(Borders::ALL)
-                .padding(Padding::uniform(1));
-
-            let list = List::new(
-                model
-                    .tasks
-                    .iter()
-                    .map(|a| {
-                        ListItem::new(a.text.clone()).style(Style::new().set_style(if a.done {
-                            COMPLETED_TEXT_COLOR
-                        } else {
-                            TEXT_COLOR
-                        }))
-                    })
-                    .collect::<Vec<ListItem>>(),
-            )
-            .block(block)
-            .highlight_style(SELECTED_STYLE_FG);
-
-            f.render_stateful_widget(list, f.size(), &mut model.state);
-        }
-        RunningState::Edit => {
-            let layout = centered_rect(50, 50, f.size());
-            let width = layout.width.max(3) - 3;
-            let input = model.input.as_mut().unwrap();
-            let scroll = input.visual_scroll(width as usize);
-            let input = Paragraph::new(input.value())
-                .scroll((0, scroll as u16))
-                .block(Block::default().borders(Borders::ALL).title("Input"));
-            f.render_widget(input, layout);
-            f.set_cursor(
-                //     // Put cursor past the end of the input text
-                layout.x
-                    + ((model.input.as_mut().unwrap().visual_cursor()).max(scroll) - scroll) as u16
-                    + 1,
-                //     // Move one line down, from the border to the input line
-                layout.y + 1,
-            )
-        }
-        RunningState::Done => unreachable!(),
-    }
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -243,9 +170,9 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
 }
 
 #[derive(Clone)]
-struct Task {
-    text: String,
-    done: bool,
+pub struct Task {
+    pub text: String,
+    pub done: bool,
 }
 
 impl Task {
