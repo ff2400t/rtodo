@@ -1,5 +1,5 @@
 use ratatui::{
-    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
+    crossterm::event::{self, Event, KeyCode, KeyEvent},
     widgets::ListState,
 };
 use std::{fs::write, path::Path, time::Duration};
@@ -8,11 +8,29 @@ use tui_input::{backend::crossterm::EventHandler, Input};
 const DONE_PREFIX: &str = "x ";
 const PENDING_PREFIX: &str = "☐ ";
 
+pub fn run_app(
+    terminal: &mut crate::tui::Tui,
+    mut model: &mut Model,
+) -> color_eyre::Result<Option<Message>> {
+    model.state.select(Some(0));
+    while model.app_state != AppState::Done {
+        terminal.draw(|f| crate::ui::view(&mut model, f))?;
+
+        let mut current_msg = handle_events(model)?;
+
+        while current_msg.is_some() {
+            current_msg = update(&mut model, current_msg.unwrap());
+        }
+    }
+
+    Ok(None)
+}
+
 pub struct Model {
     pub state: ListState,
     pub tasks: Vec<Task>,
-    pub running_state: RunningState,
-    pub input: Option<Input>,
+    pub app_state: AppState,
+    pub input: Input,
 }
 
 impl Model {
@@ -20,8 +38,8 @@ impl Model {
         Self {
             state: ListState::default(),
             tasks: tasks.iter().map(|a| Task::new(a)).collect(),
-            running_state: RunningState::Running,
-            input: None,
+            app_state: AppState::Running,
+            input: Input::default(),
         }
     }
 
@@ -43,7 +61,7 @@ impl Model {
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
-pub enum RunningState {
+pub enum AppState {
     #[default]
     Running,
     Done,
@@ -59,24 +77,6 @@ pub enum Message {
     EditorKey(KeyEvent),
 }
 
-pub fn run_app(
-    terminal: &mut crate::tui::Tui,
-    mut model: &mut Model,
-) -> color_eyre::Result<Option<Message>> {
-    model.state.select(Some(0));
-    while model.running_state != RunningState::Done {
-        terminal.draw(|f| crate::ui::view(&mut model, f))?;
-
-        let mut current_msg = handle_events(model)?;
-
-        while current_msg.is_some() {
-            current_msg = update(&mut model, current_msg.unwrap());
-        }
-    }
-
-    Ok(None)
-}
-
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
     if event::poll(Duration::from_millis(250))? {
         if let Event::Key(key) = event::read()? {
@@ -89,8 +89,8 @@ fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
 }
 
 fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
-    match model.running_state {
-        RunningState::Running => match key_event.code {
+    match model.app_state {
+        AppState::Running => match key_event.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Message::Prev),
             KeyCode::Down | KeyCode::Char('j') => Some(Message::Next),
             KeyCode::Char('q') => Some(Message::Quit),
@@ -98,18 +98,18 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('e') => Some(Message::ToggleEdit),
             _ => None,
         },
-        RunningState::Edit => match key_event.code {
+        AppState::Edit => match key_event.code {
             KeyCode::Esc => Some(Message::ToggleEdit),
             _ => Some(Message::EditorKey(key_event)),
         },
-        RunningState::Done => unreachable!(),
+        AppState::Done => unreachable!(),
     }
 }
 
 fn update(model: &mut Model, msg: Message) -> Option<Message> {
     match msg {
         Message::Quit => {
-            model.running_state = RunningState::Done;
+            model.app_state = AppState::Done;
             None
         }
         Message::Next => {
@@ -129,7 +129,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::ToggleEdit => {
-            model.running_state = if model.running_state == RunningState::Running {
+            model.app_state = if model.app_state == AppState::Running {
                 if let Some(index) = model.state.selected() {
                     if let Some(value) = model.tasks.get(index) {
                         let value = if value.done {
@@ -137,20 +137,20 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                         } else {
                             value.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
                         };
-                        model.input = Some(Input::new(value));
+                        model.input = Input::new(value);
                     };
                 };
-                RunningState::Edit
+                AppState::Edit
             } else {
-                model.input = None;
-                RunningState::Running
+                model.input.reset();
+                AppState::Running
             };
             None
         }
         Message::EditorKey(event) => match event.code {
-            KeyCode::Char('d') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Enter => {
                 if let Some(index) = model.state.selected() {
-                    let value = model.input.as_mut().unwrap().value();
+                    let value = model.input.value();
                     model.tasks[index] = Task::new(value);
                     Some(Message::ToggleEdit)
                 } else {
@@ -158,11 +158,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 }
             }
             _ => {
-                model
-                    .input
-                    .as_mut()
-                    .unwrap()
-                    .handle_event(&Event::Key(event));
+                model.input.handle_event(&Event::Key(event));
                 None
             }
         },
