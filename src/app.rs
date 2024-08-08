@@ -31,6 +31,7 @@ pub struct Model {
     pub tasks: Vec<Task>,
     pub app_state: AppState,
     pub input: Input,
+    pub is_new_task: bool,
 }
 
 impl Model {
@@ -40,6 +41,7 @@ impl Model {
             tasks: tasks.iter().map(|a| Task::new(a)).collect(),
             app_state: AppState::Running,
             input: Input::default(),
+            is_new_task: false,
         }
     }
 
@@ -75,6 +77,7 @@ pub enum Message {
     ToggleDone,
     ToggleEdit,
     EditorKey(KeyEvent),
+    NewTask,
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -96,6 +99,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('q') => Some(Message::Quit),
             KeyCode::Char('d') => Some(Message::ToggleDone),
             KeyCode::Char('e') => Some(Message::ToggleEdit),
+            KeyCode::Char('n') => Some(Message::NewTask),
             _ => None,
         },
         AppState::Edit => match key_event.code {
@@ -129,39 +133,59 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::ToggleEdit => {
-            model.app_state = if model.app_state == AppState::Running {
-                if let Some(index) = model.state.selected() {
-                    if let Some(value) = model.tasks.get(index) {
-                        let value = if value.done {
-                            value.text.clone()
-                        } else {
-                            value.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
+            if model.app_state == AppState::Running {
+                if model.is_new_task {
+                    model.input = Input::new("".to_string());
+                } else {
+                    if let Some(index) = model.state.selected() {
+                        if let Some(value) = model.tasks.get(index) {
+                            let value = if value.done {
+                                value.text.clone()
+                            } else {
+                                value.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
+                            };
+                            model.input = Input::new(value);
                         };
-                        model.input = Input::new(value);
                     };
                 };
-                AppState::Edit
+                model.app_state = AppState::Edit
             } else {
+                if model.is_new_task {
+                    model.is_new_task = false
+                };
                 model.input.reset();
-                AppState::Running
-            };
+                model.app_state = AppState::Running
+            }
             None
         }
         Message::EditorKey(event) => match event.code {
-            KeyCode::Enter => {
-                if let Some(index) = model.state.selected() {
-                    let value = model.input.value();
-                    model.tasks[index] = Task::new(value);
-                    Some(Message::ToggleEdit)
-                } else {
-                    None
+            KeyCode::Enter => match model.app_state {
+                AppState::Edit => {
+                    if model.is_new_task {
+                        let value = model.input.value();
+                        let task = Task::new(value);
+                        model.tasks.push(task);
+                        model.app_state = AppState::Running;
+                        Some(Message::ToggleEdit)
+                    } else if let Some(index) = model.state.selected() {
+                        let value = model.input.value();
+                        model.tasks[index] = Task::new(value);
+                        Some(Message::ToggleEdit)
+                    } else {
+                        None
+                    }
                 }
-            }
+                AppState::Done | AppState::Running => unreachable!(),
+            },
             _ => {
                 model.input.handle_event(&Event::Key(event));
                 None
             }
         },
+        Message::NewTask => {
+            model.is_new_task = true;
+            Some(Message::ToggleEdit)
+        }
     }
 }
 

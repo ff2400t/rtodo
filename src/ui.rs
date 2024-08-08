@@ -44,14 +44,19 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
     f.render_stateful_widget(list, chunks[0], &mut model.state);
 
     if model.app_state == AppState::Edit {
-        let layout = centered_rect(50, 50, chunks[0]);
+        let layout = centered_rect(50, 30, chunks[0]);
         let width = layout.width.max(3) - 3;
         let scroll = model.input.visual_scroll(width as usize);
+        let title = if model.is_new_task {
+            "New Task"
+        } else {
+            "Edit Task"
+        };
         let input_widget = Paragraph::new(model.input.value())
             .scroll((0, scroll as u16))
             .block(
                 Block::default()
-                    .title_top("New Task")
+                    .title_top(title)
                     .borders(Borders::ALL)
                     .title("Input"),
             );
