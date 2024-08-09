@@ -31,7 +31,7 @@ pub struct Model {
     pub tasks: Vec<Task>,
     pub app_state: AppState,
     pub input: Input,
-    pub is_new_task: bool,
+    pub input_state: InputState,
 }
 
 impl Model {
@@ -41,7 +41,7 @@ impl Model {
             tasks: tasks.iter().map(|a| Task::new(a)).collect(),
             app_state: AppState::Running,
             input: Input::default(),
-            is_new_task: false,
+            input_state: InputState::Edit,
         }
     }
 
@@ -70,14 +70,22 @@ pub enum AppState {
     Edit,
 }
 
+pub enum InputState {
+    Edit,
+    NewTask,
+}
+
 pub enum Message {
     Quit,
     Next,
     Prev,
     ToggleDone,
-    ToggleEdit,
     EditorKey(KeyEvent),
-    NewTask,
+    TaskEdit,
+    NewTaskEditor,
+    SaveNewTask,
+    UpdateSelectedTask,
+    DiscardEditor,
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -98,12 +106,12 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Down | KeyCode::Char('j') => Some(Message::Next),
             KeyCode::Char('q') => Some(Message::Quit),
             KeyCode::Char('d') => Some(Message::ToggleDone),
-            KeyCode::Char('e') => Some(Message::ToggleEdit),
-            KeyCode::Char('n') => Some(Message::NewTask),
+            KeyCode::Char('e') => Some(Message::TaskEdit),
+            KeyCode::Char('n') => Some(Message::NewTaskEditor),
             _ => None,
         },
         AppState::Edit => match key_event.code {
-            KeyCode::Esc => Some(Message::ToggleEdit),
+            KeyCode::Esc => Some(Message::DiscardEditor),
             _ => Some(Message::EditorKey(key_event)),
         },
         AppState::Done => unreachable!(),
@@ -132,49 +140,28 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             };
             None
         }
-        Message::ToggleEdit => {
+        Message::TaskEdit => {
             if model.app_state == AppState::Running {
-                if model.is_new_task {
-                    model.input = Input::new("".to_string());
-                } else {
-                    if let Some(index) = model.state.selected() {
-                        if let Some(value) = model.tasks.get(index) {
-                            let value = if value.done {
-                                value.text.clone()
-                            } else {
-                                value.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
-                            };
-                            model.input = Input::new(value);
+                if let Some(index) = model.state.selected() {
+                    if let Some(value) = model.tasks.get(index) {
+                        let value = if value.done {
+                            value.text.clone()
+                        } else {
+                            value.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
                         };
+                        model.input = Input::new(value);
                     };
                 };
                 model.app_state = AppState::Edit
-            } else {
-                if model.is_new_task {
-                    model.is_new_task = false
-                };
-                model.input.reset();
-                model.app_state = AppState::Running
-            }
+            };
             None
         }
         Message::EditorKey(event) => match event.code {
             KeyCode::Enter => match model.app_state {
-                AppState::Edit => {
-                    if model.is_new_task {
-                        let value = model.input.value();
-                        let task = Task::new(value);
-                        model.tasks.push(task);
-                        model.app_state = AppState::Running;
-                        Some(Message::ToggleEdit)
-                    } else if let Some(index) = model.state.selected() {
-                        let value = model.input.value();
-                        model.tasks[index] = Task::new(value);
-                        Some(Message::ToggleEdit)
-                    } else {
-                        None
-                    }
-                }
+                AppState::Edit => match model.input_state {
+                    InputState::Edit => Some(Message::UpdateSelectedTask),
+                    InputState::NewTask => Some(Message::SaveNewTask),
+                },
                 AppState::Done | AppState::Running => unreachable!(),
             },
             _ => {
@@ -182,9 +169,32 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 None
             }
         },
-        Message::NewTask => {
-            model.is_new_task = true;
-            Some(Message::ToggleEdit)
+        Message::NewTaskEditor => {
+            model.input = Input::new("".to_string());
+            model.app_state = AppState::Edit;
+            model.input_state = InputState::NewTask;
+            None
+        }
+        Message::SaveNewTask => {
+            let value = model.input.value();
+            let task = Task::new(value);
+            model.tasks.push(task);
+            model.app_state = AppState::Running;
+            None
+        }
+        Message::UpdateSelectedTask => {
+            if let Some(index) = model.state.selected() {
+                let value = model.input.value();
+                model.tasks[index] = Task::new(value);
+                model.app_state = AppState::Running;
+            }
+            None
+        }
+        Message::DiscardEditor => {
+            model.input_state = InputState::Edit;
+            model.input.reset();
+            model.app_state = AppState::Running;
+            None
         }
     }
 }

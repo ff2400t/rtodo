@@ -47,10 +47,9 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
         let layout = centered_rect(50, 30, chunks[0]);
         let width = layout.width.max(3) - 3;
         let scroll = model.input.visual_scroll(width as usize);
-        let title = if model.is_new_task {
-            "New Task"
-        } else {
-            "Edit Task"
+        let title = match model.input_state {
+            crate::app::InputState::Edit => "Edit Task",
+            crate::app::InputState::NewTask => "New Task",
         };
         let input_widget = Paragraph::new(model.input.value())
             .scroll((0, scroll as u16))
