@@ -11,8 +11,14 @@ fn main() -> color_eyre::Result<()> {
     let mut pwd = env::current_dir().expect("Failed to find the Present working directory");
     pwd.push("todo.txt");
     let file_name = pwd.as_path();
-    let binding = read_to_string(file_name)
-        .expect("Failed to find the todo.txt file in the current directory");
+
+    let binding = match read_to_string(file_name) {
+        Ok(str) => str,
+        Err(_) => {
+            println!("Failed to find the todo.txt file in the current directory");
+            return Ok(());
+        }
+    };
     let tasks = binding.lines().collect();
 
     let mut model = Model::new(tasks);
