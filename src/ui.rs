@@ -72,12 +72,12 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
                 layout.y + 1,
             );
             f.render_widget(
-                Line::raw("C-d: Save and Exit Edit Mode; Esc - Exit Edit Mode"),
+                Line::raw("Enter: Save; Esc: Exit Edit Mode; D: Delete"),
                 chunks[1],
             );
         }
         _ => {
-            let line = "d: Toggle Todo; e: Edit; q: Quit".to_string()
+            let line = "d: Toggle Done; e: Edit; q: Quit; s: Search; D: Delete".to_string()
                 + if model.app_state == AppState::Filter {
                     &"; Esc: Discard Filter"
                 } else {

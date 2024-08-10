@@ -95,6 +95,7 @@ pub enum Message {
     FilterList,
     UpdateFilterStr,
     ResetFilter,
+    DeleteTask,
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -115,6 +116,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Down | KeyCode::Char('j') => Some(Message::Next),
             KeyCode::Char('q') => Some(Message::Quit),
             KeyCode::Char('d') => Some(Message::ToggleDone),
+            KeyCode::Char('D') => Some(Message::DeleteTask),
             KeyCode::Char('e') => Some(Message::TaskEdit),
             KeyCode::Char('n') => Some(Message::NewTaskEditor),
             KeyCode::Char('s') => Some(Message::FilterEditor),
@@ -249,6 +251,22 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             let value = model.input.value().to_string();
             model.filter_str = Some(value);
             Some(Message::FilterList)
+        }
+        Message::DeleteTask => {
+            if model.filter_str == None {
+                if let Some(index) = model.state.selected() {
+                    model.tasks.remove(index);
+                };
+                None
+            } else {
+                if let Some(index) = model.state.selected() {
+                    let text = &model.filtered_tasks[index].text;
+                    if let Some(index) = model.tasks.iter().position(|t| t.text == *text) {
+                        model.tasks.remove(index);
+                    };
+                }
+                Some(Message::FilterList)
+            }
         }
     }
 }
