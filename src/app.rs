@@ -26,12 +26,14 @@ pub fn run_app(
     Ok(None)
 }
 
+#[derive(Debug)]
 pub struct Model {
     pub state: ListState,
     pub tasks: Vec<Task>,
+    pub filtered_tasks: Vec<Task>,
+    pub filter_str: Option<String>,
     pub app_state: AppState,
     pub input: Input,
-    pub input_state: InputState,
 }
 
 impl Model {
@@ -39,9 +41,10 @@ impl Model {
         Self {
             state: ListState::default(),
             tasks: tasks.iter().map(|a| Task::new(a)).collect(),
+            filtered_tasks: Vec::new(),
+            filter_str: None,
             app_state: AppState::Running,
             input: Input::default(),
-            input_state: InputState::Edit,
         }
     }
 
@@ -62,17 +65,19 @@ impl Model {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum AppState {
-    #[default]
     Running,
     Done,
-    Edit,
+    Edit(InputState),
+    Filter,
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum InputState {
     Edit,
     NewTask,
+    Filter,
 }
 
 pub enum Message {
@@ -86,6 +91,10 @@ pub enum Message {
     SaveNewTask,
     UpdateSelectedTask,
     DiscardEditor,
+    FilterEditor,
+    FilterList,
+    UpdateFilterStr,
+    ResetFilter,
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -101,16 +110,18 @@ fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
 
 fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
     match model.app_state {
-        AppState::Running => match key_event.code {
+        AppState::Running | AppState::Filter => match key_event.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Message::Prev),
             KeyCode::Down | KeyCode::Char('j') => Some(Message::Next),
             KeyCode::Char('q') => Some(Message::Quit),
             KeyCode::Char('d') => Some(Message::ToggleDone),
             KeyCode::Char('e') => Some(Message::TaskEdit),
             KeyCode::Char('n') => Some(Message::NewTaskEditor),
+            KeyCode::Char('s') => Some(Message::FilterEditor),
+            KeyCode::Esc if model.app_state == AppState::Filter => Some(Message::ResetFilter),
             _ => None,
         },
-        AppState::Edit => match key_event.code {
+        AppState::Edit(_) => match key_event.code {
             KeyCode::Esc => Some(Message::DiscardEditor),
             _ => Some(Message::EditorKey(key_event)),
         },
@@ -141,28 +152,32 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::TaskEdit => {
-            if model.app_state == AppState::Running {
-                if let Some(index) = model.state.selected() {
-                    if let Some(value) = model.tasks.get(index) {
-                        let value = if value.done {
-                            value.text.clone()
-                        } else {
-                            value.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
-                        };
-                        model.input = Input::new(value);
-                    };
+            if let Some(index) = model.state.selected() {
+                let list = if model.app_state == AppState::Filter {
+                    &model.filtered_tasks
+                } else {
+                    &model.tasks
                 };
-                model.app_state = AppState::Edit
+                if let Some(value) = list.get(index) {
+                    let value = if value.done {
+                        value.text.clone()
+                    } else {
+                        value.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
+                    };
+                    model.input = Input::new(value);
+                };
             };
+            model.app_state = AppState::Edit(InputState::Edit);
             None
         }
         Message::EditorKey(event) => match event.code {
             KeyCode::Enter => match model.app_state {
-                AppState::Edit => match model.input_state {
+                AppState::Edit(ref input_state) => match input_state {
                     InputState::Edit => Some(Message::UpdateSelectedTask),
                     InputState::NewTask => Some(Message::SaveNewTask),
+                    InputState::Filter => Some(Message::UpdateFilterStr),
                 },
-                AppState::Done | AppState::Running => unreachable!(),
+                _ => unreachable!(),
             },
             _ => {
                 model.input.handle_event(&Event::Key(event));
@@ -171,8 +186,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         },
         Message::NewTaskEditor => {
             model.input = Input::new("".to_string());
-            model.app_state = AppState::Edit;
-            model.input_state = InputState::NewTask;
+            model.app_state = AppState::Edit(InputState::NewTask);
             None
         }
         Message::SaveNewTask => {
@@ -183,23 +197,63 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::UpdateSelectedTask => {
-            if let Some(index) = model.state.selected() {
-                let value = model.input.value();
-                model.tasks[index] = Task::new(value);
-                model.app_state = AppState::Running;
+            if model.filter_str == None {
+                if let Some(index) = model.state.selected() {
+                    let value = model.input.value();
+                    let new_task = Task::new(value);
+                    model.tasks[index] = new_task;
+                    model.app_state = AppState::Running;
+                }
+                None
+            } else {
+                if let Some(index) = model.state.selected() {
+                    let value = model.input.value();
+                    let text = &model.filtered_tasks[index].text;
+                    if let Some(index) = model.tasks.iter().position(|t| t.text == *text) {
+                        model.tasks[index] = Task::new(value);
+                    }
+                }
+                Some(Message::FilterList)
+            }
+        }
+        Message::DiscardEditor => {
+            model.app_state = AppState::Running;
+            None
+        }
+        Message::FilterEditor => {
+            model.input.reset();
+            model.app_state = AppState::Edit(InputState::Filter);
+            None
+        }
+        Message::FilterList => {
+            if model.filter_str.is_some() {
+                if let Some(ref value) = model.filter_str {
+                    model.filtered_tasks = model
+                        .tasks
+                        .iter()
+                        .filter(|t| t.text.contains(value))
+                        .map(|a| a.clone())
+                        .collect();
+                    model.app_state = AppState::Filter;
+                }
             }
             None
         }
-        Message::DiscardEditor => {
-            model.input_state = InputState::Edit;
-            model.input.reset();
+        Message::ResetFilter => {
             model.app_state = AppState::Running;
+            model.filtered_tasks = Vec::new();
+            model.filter_str = None;
             None
+        }
+        Message::UpdateFilterStr => {
+            let value = model.input.value().to_string();
+            model.filter_str = Some(value);
+            Some(Message::FilterList)
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Task {
     pub text: String,
     pub done: bool,

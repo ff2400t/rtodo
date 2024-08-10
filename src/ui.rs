@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{AppState, Model};
+use crate::app::{AppState, InputState, Model};
 
 const SELECTED_STYLE_FG: Color = tailwind::BLUE.c300;
 const TEXT_COLOR: Color = tailwind::SLATE.c200;
@@ -25,10 +25,13 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
         .split(outer_area);
     f.render_widget(outer_block, f.size());
     let list_block = Block::new().borders(Borders::BOTTOM);
-    let list = List::new(
-        model
-            .tasks
-            .iter()
+    let list = if model.filter_str.is_some() {
+        &model.filtered_tasks
+    } else {
+        &model.tasks
+    };
+    let list_widget = List::new(
+        list.iter()
             .map(|a| {
                 ListItem::new(a.text.clone()).style(Style::new().set_style(if a.done {
                     COMPLETED_TEXT_COLOR
@@ -41,37 +44,47 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
     .block(list_block)
     .highlight_style(SELECTED_STYLE_FG);
 
-    f.render_stateful_widget(list, chunks[0], &mut model.state);
+    f.render_stateful_widget(list_widget, chunks[0], &mut model.state);
 
-    if model.app_state == AppState::Edit {
-        let layout = centered_rect(50, 30, chunks[0]);
-        let width = layout.width.max(3) - 3;
-        let scroll = model.input.visual_scroll(width as usize);
-        let title = match model.input_state {
-            crate::app::InputState::Edit => "Edit Task",
-            crate::app::InputState::NewTask => "New Task",
-        };
-        let input_widget = Paragraph::new(model.input.value())
-            .scroll((0, scroll as u16))
-            .block(
-                Block::default()
-                    .title_top(title)
-                    .borders(Borders::ALL)
-                    .title("Input"),
+    match model.app_state {
+        AppState::Edit(ref input_state) => {
+            let layout = centered_rect(50, 30, chunks[0]);
+            let width = layout.width.max(3) - 3;
+            let scroll = model.input.visual_scroll(width as usize);
+            let title = match input_state {
+                InputState::Edit => "Edit Task",
+                InputState::NewTask => "New Task",
+                InputState::Filter => "Search",
+            };
+            let input_widget = Paragraph::new(model.input.value())
+                .scroll((0, scroll as u16))
+                .block(
+                    Block::default()
+                        .title_top(title)
+                        .borders(Borders::ALL)
+                        .title("Input"),
+                );
+            f.render_widget(input_widget, layout);
+            f.set_cursor(
+                //     // Put cursor past the end of the input text
+                layout.x + ((model.input.visual_cursor()).max(scroll) - scroll) as u16 + 1,
+                //     // Move one line down, from the border to the input line
+                layout.y + 1,
             );
-        f.render_widget(input_widget, layout);
-        f.set_cursor(
-            //     // Put cursor past the end of the input text
-            layout.x + ((model.input.visual_cursor()).max(scroll) - scroll) as u16 + 1,
-            //     // Move one line down, from the border to the input line
-            layout.y + 1,
-        );
-        f.render_widget(
-            Line::raw("C-d: Save and Exit Edit Mode; Esc - Exit Edit Mode"),
-            chunks[1],
-        );
-    } else {
-        f.render_widget(Line::raw("d: Toggle Todo; e: Edit, q: Quit"), chunks[1]);
+            f.render_widget(
+                Line::raw("C-d: Save and Exit Edit Mode; Esc - Exit Edit Mode"),
+                chunks[1],
+            );
+        }
+        _ => {
+            let line = "d: Toggle Todo; e: Edit; q: Quit".to_string()
+                + if model.app_state == AppState::Filter {
+                    &"; Esc: Discard Filter"
+                } else {
+                    &""
+                };
+            f.render_widget(Line::raw(line), chunks[1]);
+        }
     }
 }
 
