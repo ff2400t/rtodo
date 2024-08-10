@@ -2,7 +2,7 @@ use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEvent},
     widgets::ListState,
 };
-use std::{fs::write, path::Path, time::Duration};
+use std::{fs::write, path::Path};
 use tui_input::{backend::crossterm::EventHandler, Input};
 
 const DONE_PREFIX: &str = "x ";
@@ -99,11 +99,9 @@ pub enum Message {
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
-    if event::poll(Duration::from_millis(250))? {
-        if let Event::Key(key) = event::read()? {
-            if key.kind == event::KeyEventKind::Press {
-                return Ok(handle_key(&model, key));
-            }
+    if let Event::Key(key) = event::read()? {
+        if key.kind == event::KeyEventKind::Press {
+            return Ok(handle_key(&model, key));
         }
     }
     Ok(None)
