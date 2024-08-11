@@ -1,12 +1,14 @@
 use ratatui::{
-    crossterm::event::{self, Event, KeyCode, KeyEvent},
+    crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     widgets::ListState,
 };
-use std::{fs::write, path::Path};
+use std::{collections::HashSet, fs::write, path::Path};
 use tui_input::{backend::crossterm::EventHandler, Input};
 
 const DONE_PREFIX: &str = "x ";
 const PENDING_PREFIX: &str = "☐ ";
+const PROJECT_PREFIX: &str = "+";
+const CONTEXT_PREFIX: &str = "@";
 
 pub fn run_app(
     terminal: &mut crate::tui::Tui,
@@ -34,10 +36,28 @@ pub struct Model {
     pub filter_str: Option<String>,
     pub app_state: AppState,
     pub input: Input,
+    pub projects: HashSet<String>,
+    pub context: HashSet<String>,
+    pub auto_complete: Option<Autocomplete>,
 }
 
 impl Model {
     pub fn new(tasks: Vec<&str>) -> Self {
+        let mut projects = HashSet::new();
+        let mut context = HashSet::new();
+        tasks.iter().for_each(|t| {
+            t.split_whitespace().for_each(|t| {
+                if t.starts_with(PROJECT_PREFIX) {
+                    let val = t.strip_prefix(PROJECT_PREFIX).unwrap();
+                    projects.insert(val.to_string());
+                } else if t.starts_with(CONTEXT_PREFIX) {
+                    let val = t.strip_prefix(CONTEXT_PREFIX).unwrap();
+                    context.insert(val.to_string());
+                } else {
+                    ();
+                }
+            })
+        });
         Self {
             state: ListState::default(),
             tasks: tasks.iter().map(|a| Task::new(a)).collect(),
@@ -45,6 +65,9 @@ impl Model {
             filter_str: None,
             app_state: AppState::Running,
             input: Input::default(),
+            projects,
+            context,
+            auto_complete: None,
         }
     }
 
@@ -80,6 +103,19 @@ pub enum InputState {
     Filter,
 }
 
+#[derive(Debug)]
+pub struct Autocomplete {
+    pub kind: AutoCompleteKind,
+    pub list: Vec<String>,
+    pub list_state: ListState,
+}
+
+#[derive(Debug)]
+pub enum AutoCompleteKind {
+    Project,
+    Context,
+}
+
 pub enum Message {
     Quit,
     Next,
@@ -96,6 +132,7 @@ pub enum Message {
     UpdateFilterStr,
     ResetFilter,
     DeleteTask,
+    HandleAutoComplete,
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -171,17 +208,53 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::EditorKey(event) => match event.code {
-            KeyCode::Enter => match model.app_state {
-                AppState::Edit(ref input_state) => match input_state {
-                    InputState::Edit => Some(Message::UpdateSelectedTask),
-                    InputState::NewTask => Some(Message::SaveNewTask),
-                    InputState::Filter => Some(Message::UpdateFilterStr),
-                },
-                _ => unreachable!(),
-            },
+            KeyCode::Enter => {
+                if model.auto_complete.is_some() {
+                    let ac = model.auto_complete.as_ref().unwrap();
+                    if let Some(index) = ac.list_state.selected() {
+                        if let Some(selected) = ac.list.get(index) {
+                            let cursor_index = model.input.cursor();
+                            let (before, after) = model.input.value().split_at(cursor_index);
+                            let value = before.to_string() + selected + after;
+                            model.input = Input::new(value);
+                            model.auto_complete = None;
+                            return None;
+                        }
+                    }
+                }
+
+                match model.app_state {
+                    AppState::Edit(ref input_state) => match input_state {
+                        InputState::Edit => Some(Message::UpdateSelectedTask),
+                        InputState::NewTask => Some(Message::SaveNewTask),
+                        InputState::Filter => Some(Message::UpdateFilterStr),
+                    },
+                    _ => unreachable!(),
+                }
+            }
+            KeyCode::Tab => {
+                if model.auto_complete.is_some() {
+                    if event.modifiers.contains(KeyModifiers::SHIFT) {
+                        model
+                            .auto_complete
+                            .as_mut()
+                            .unwrap()
+                            .list_state
+                            .select_previous();
+                    } else {
+                        model
+                            .auto_complete
+                            .as_mut()
+                            .unwrap()
+                            .list_state
+                            .select_next();
+                    }
+                };
+                None
+            }
             _ => {
                 model.input.handle_event(&Event::Key(event));
-                None
+                Some(Message::HandleAutoComplete)
             }
         },
         Message::NewTaskEditor => {
@@ -218,6 +291,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         }
         Message::DiscardEditor => {
             model.app_state = AppState::Running;
+            model.auto_complete = None;
             None
         }
         Message::FilterEditor => {
@@ -265,6 +339,39 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 }
                 Some(Message::FilterList)
             }
+        }
+        Message::HandleAutoComplete => {
+            let val = model.input.value();
+            let index = model.input.cursor();
+            if index != 0 {
+                let last_char = val.get(index - 1..index).unwrap_or("");
+                if last_char == "+" {
+                    let suggestions = model
+                        .projects
+                        .iter()
+                        .map(|s| s.clone())
+                        .collect::<Vec<String>>();
+                    model.auto_complete = Some(Autocomplete {
+                        kind: AutoCompleteKind::Project,
+                        list: suggestions,
+                        list_state: ListState::default(),
+                    })
+                } else if last_char == "@" {
+                    let suggestions = model
+                        .context
+                        .iter()
+                        .map(|s| s.clone())
+                        .collect::<Vec<String>>();
+                    model.auto_complete = Some(Autocomplete {
+                        kind: AutoCompleteKind::Context,
+                        list: suggestions,
+                        list_state: ListState::default(),
+                    })
+                } else {
+                    model.auto_complete = None
+                }
+            };
+            None
         }
     }
 }
