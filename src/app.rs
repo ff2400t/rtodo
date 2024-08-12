@@ -3,12 +3,14 @@ use ratatui::{
     widgets::ListState,
 };
 use std::{collections::HashSet, fs::write, path::Path};
+use time::{format_description::BorrowedFormatItem, macros::format_description, OffsetDateTime};
 use tui_input::{backend::crossterm::EventHandler, Input};
 
 const DONE_PREFIX: &str = "x ";
 const PENDING_PREFIX: &str = "☐ ";
 const PROJECT_PREFIX: &str = "+";
 const CONTEXT_PREFIX: &str = "@";
+const DATE_FORMAT_STR: &[BorrowedFormatItem] = format_description!("[year]-[month]-[day]");
 
 pub fn run_app(
     terminal: &mut crate::tui::Tui,
@@ -258,7 +260,9 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             }
         },
         Message::NewTaskEditor => {
-            model.input = Input::new("".to_string());
+            let local = OffsetDateTime::now_local().unwrap();
+            let base = local.format(&DATE_FORMAT_STR).unwrap();
+            model.input = Input::new(base + " ");
             model.app_state = AppState::Edit(InputState::NewTask);
             None
         }
