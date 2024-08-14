@@ -26,14 +26,15 @@ fn main() -> color_eyre::Result<()> {
     let mut model = Model::new(tasks, file_name);
     errors::install_hooks()?;
     let mut terminal = tui::init()?;
-    let _ = run_app(&mut terminal, &mut model);
-
-    let result = model.write();
+    let save_file = run_app(&mut terminal, &mut model)?;
 
     tui::restore()?;
-    match result {
-        Err(_) => println!("There was an error in saving the todo.txt file"),
-        _ => (),
+
+    if save_file {
+        match model.write() {
+            Err(_) => println!("There was an error in saving the todo.txt file"),
+            _ => (),
+        }
     }
 
     Ok(())

@@ -13,10 +13,7 @@ const PROJECT_PREFIX: &str = "+";
 const CONTEXT_PREFIX: &str = "@";
 const DATE_FORMAT_STR: &[BorrowedFormatItem] = format_description!("[year]-[month]-[day]");
 
-pub fn run_app(
-    terminal: &mut crate::tui::Tui,
-    mut model: &mut Model,
-) -> color_eyre::Result<Option<Message>> {
+pub fn run_app(terminal: &mut crate::tui::Tui, mut model: &mut Model) -> color_eyre::Result<bool> {
     model.state.select(Some(0));
     while model.app_state != AppState::Done {
         terminal.draw(|f| crate::ui::view(&mut model, f))?;
@@ -28,7 +25,7 @@ pub fn run_app(
         }
     }
 
-    Ok(None)
+    Ok(model.save_file)
 }
 
 #[derive(Debug)]
@@ -87,7 +84,7 @@ impl Model {
             context,
             auto_complete: None,
             file_name,
-            save_file: false,
+            save_file: true,
         }
     }
 
@@ -159,6 +156,7 @@ pub enum Message {
     DeleteTask,
     HandleAutoComplete,
     SaveFile,
+    QuitWithoutSave,
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -176,7 +174,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Up | KeyCode::Char('k') => Some(Message::Prev),
             KeyCode::Down | KeyCode::Char('j') => Some(Message::Next),
             KeyCode::Char('q') => Some(Message::Quit),
-            KeyCode::Char('Q') => Some(Message::Quit),
+            KeyCode::Char('Q') => Some(Message::QuitWithoutSave),
             KeyCode::Char('d') => Some(Message::ToggleDone),
             KeyCode::Char('D') => Some(Message::DeleteTask),
             KeyCode::Char('e') => Some(Message::TaskEdit),
@@ -405,6 +403,11 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         }
         Message::SaveFile => {
             model.write().ok();
+            None
+        }
+        Message::QuitWithoutSave => {
+            model.save_file = false;
+            model.app_state = AppState::Done;
             None
         }
     }
