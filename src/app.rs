@@ -6,7 +6,8 @@ use std::{collections::HashSet, fs::write, path::Path};
 use time::{format_description::BorrowedFormatItem, macros::format_description, OffsetDateTime};
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-const DONE_PREFIX: &str = "x ";
+use crate::tasks::Task;
+
 const PENDING_PREFIX: &str = "☐ ";
 const PROJECT_PREFIX: &str = "+";
 const CONTEXT_PREFIX: &str = "@";
@@ -62,9 +63,22 @@ impl Model {
                 }
             })
         });
+        let tasks = tasks
+            .iter()
+            .filter(|e| {
+                let temp = e.trim();
+
+                if temp.is_empty() || temp == "x" {
+                    false
+                } else {
+                    true
+                }
+            })
+            .map(|a| Task::new(a))
+            .collect();
         Self {
             state: ListState::default(),
-            tasks: tasks.iter().map(|a| Task::new(a)).collect(),
+            tasks,
             filtered_tasks: Vec::new(),
             filter_str: None,
             app_state: AppState::Running,
@@ -392,64 +406,6 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         Message::SaveFile => {
             model.write().ok();
             None
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Task {
-    pub text: String,
-    pub done: bool,
-}
-
-impl Task {
-    fn new(text: &str) -> Self {
-        let done = text.starts_with("x ");
-        let text = if done {
-            text.to_string()
-        } else {
-            (PENDING_PREFIX.to_string() + text).to_string()
-        };
-        Self { done, text }
-    }
-
-    fn toggle_done(&mut self) {
-        const PRIORITY_KEY: &str = "Pri:";
-        if self.done {
-            self.done = false;
-            let priority_kv = self
-                .text
-                .split_whitespace()
-                .skip(1)
-                .find(|word| word.starts_with(PRIORITY_KEY));
-            if let Some(pri) = priority_kv {
-                let pri = pri.strip_prefix(PRIORITY_KEY).unwrap();
-                let pri = format!("({}) ", pri);
-                self.text = self.text.get(0..2).unwrap().to_string()
-                    + &pri
-                    + &self
-                        .text
-                        .get(2..)
-                        .unwrap()
-                        .to_string()
-                        .replace(&(" ".to_string() + &priority_kv.unwrap()), "")
-            }
-            self.text = self.text.replace(DONE_PREFIX, PENDING_PREFIX);
-        } else {
-            self.done = true;
-            let mut words = self.text.split_whitespace().skip(1);
-            if let Some(word) = words.next() {
-                let word = word.to_string();
-                if word.len() == 3 && word.starts_with("(") && word.ends_with(")") {
-                    if let Some(pri) = word.get(1..2).clone() {
-                        self.text = self.text.replace(&(word.clone() + &" "), "")
-                            + &" "
-                            + &PRIORITY_KEY.to_string()
-                            + &pri;
-                    }
-                }
-            }
-            self.text = self.text.replace(PENDING_PREFIX, DONE_PREFIX);
         }
     }
 }

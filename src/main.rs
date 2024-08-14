@@ -1,9 +1,10 @@
-use std::{env, fs::read_to_string, str::FromStr};
+use std::{env, fs::read_to_string};
 
 use app::{run_app, Model};
 
 mod app;
 mod errors;
+mod tasks;
 mod tui;
 mod ui;
 
