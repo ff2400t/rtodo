@@ -1,4 +1,4 @@
-use std::{env, fs::read_to_string};
+use std::{env, fs::read_to_string, str::FromStr};
 
 use app::{run_app, Model};
 
@@ -21,12 +21,13 @@ fn main() -> color_eyre::Result<()> {
     };
     let tasks = binding.lines().collect();
 
-    let mut model = Model::new(tasks);
+    let file_name = String::from(file_name.to_string_lossy());
+    let mut model = Model::new(tasks, file_name);
     errors::install_hooks()?;
     let mut terminal = tui::init()?;
     let _ = run_app(&mut terminal, &mut model);
 
-    let result = model.write(file_name);
+    let result = model.write();
 
     tui::restore()?;
     match result {

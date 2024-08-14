@@ -41,10 +41,12 @@ pub struct Model {
     pub projects: HashSet<String>,
     pub context: HashSet<String>,
     pub auto_complete: Option<Autocomplete>,
+    pub file_name: String,
+    pub save_file: bool,
 }
 
 impl Model {
-    pub fn new(tasks: Vec<&str>) -> Self {
+    pub fn new(tasks: Vec<&str>, file_name: String) -> Self {
         let mut projects = HashSet::new();
         let mut context = HashSet::new();
         tasks.iter().for_each(|t| {
@@ -70,23 +72,30 @@ impl Model {
             projects,
             context,
             auto_complete: None,
+            file_name,
+            save_file: false,
         }
     }
 
-    pub fn write(&self, file_name: &Path) -> std::io::Result<()> {
-        let content = self
-            .tasks
-            .iter()
-            .map(|a| {
-                if a.done {
-                    a.text.clone()
-                } else {
-                    a.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
-                }
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
-        write(file_name, content)
+    pub fn write(&self) -> std::io::Result<()> {
+        if self.save_file {
+            let content = self
+                .tasks
+                .iter()
+                .map(|a| {
+                    if a.done {
+                        a.text.clone()
+                    } else {
+                        a.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+            let path = Path::new(self.file_name.as_str());
+            write(path, content)
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -135,6 +144,7 @@ pub enum Message {
     ResetFilter,
     DeleteTask,
     HandleAutoComplete,
+    SaveFile,
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -152,11 +162,13 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Up | KeyCode::Char('k') => Some(Message::Prev),
             KeyCode::Down | KeyCode::Char('j') => Some(Message::Next),
             KeyCode::Char('q') => Some(Message::Quit),
+            KeyCode::Char('Q') => Some(Message::Quit),
             KeyCode::Char('d') => Some(Message::ToggleDone),
             KeyCode::Char('D') => Some(Message::DeleteTask),
             KeyCode::Char('e') => Some(Message::TaskEdit),
             KeyCode::Char('n') => Some(Message::NewTaskEditor),
-            KeyCode::Char('s') => Some(Message::FilterEditor),
+            KeyCode::Char('s') => Some(Message::SaveFile),
+            KeyCode::Char('/') => Some(Message::FilterEditor),
             KeyCode::Esc if model.app_state == AppState::Filter => Some(Message::ResetFilter),
             _ => None,
         },
@@ -375,6 +387,10 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                     model.auto_complete = None
                 }
             };
+            None
+        }
+        Message::SaveFile => {
+            model.write().ok();
             None
         }
     }
