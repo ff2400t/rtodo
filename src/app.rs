@@ -108,6 +108,23 @@ impl Model {
             Ok(())
         }
     }
+
+    /// get context and projets from string and add to the sets
+    pub fn add_to_sets(&mut self, task: &str) {
+        task.split_whitespace().for_each(|t| {
+            if t.starts_with(PROJECT_PREFIX) {
+                let val = t.strip_prefix(PROJECT_PREFIX).unwrap();
+                if !val.is_empty() {
+                    self.projects.insert(val.to_string());
+                }
+            } else if t.starts_with(CONTEXT_PREFIX) {
+                let val = t.strip_prefix(CONTEXT_PREFIX).unwrap();
+                if !val.is_empty() {
+                    self.context.insert(val.to_string());
+                }
+            }
+        });
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -241,7 +258,12 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                         if let Some(selected) = ac.list.get(index) {
                             let cursor_index = model.input.cursor();
                             let (before, after) = model.input.value().split_at(cursor_index);
-                            let value = before.to_string() + selected + after;
+                            let ac_prefix = match ac.kind {
+                                AutoCompleteKind::Project => PROJECT_PREFIX,
+                                AutoCompleteKind::Context => CONTEXT_PREFIX,
+                            };
+                            let (before, _) = before.rsplit_once(ac_prefix).unwrap();
+                            let value = before.to_string() + ac_prefix + selected + after;
                             model.input = Input::new(value);
                             model.auto_complete = None;
                             return None;
@@ -294,24 +316,27 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             let value = model.input.value();
             let task = Task::new(value);
             model.tasks.push(task);
+            value.to_string();
+            model.add_to_sets(&value.to_string());
             model.app_state = AppState::Running;
             None
         }
         Message::UpdateSelectedTask => {
+            let value = model.input.value().to_string();
             if model.filter_str == None {
                 if let Some(index) = model.state.selected() {
-                    let value = model.input.value();
-                    let new_task = Task::new(value);
+                    let new_task = Task::new(&value);
+                    model.add_to_sets(&new_task.text);
                     model.tasks[index] = new_task;
                     model.app_state = AppState::Running;
                 }
                 None
             } else {
                 if let Some(index) = model.state.selected() {
-                    let value = model.input.value();
                     let text = &model.filtered_tasks[index].text;
                     if let Some(index) = model.tasks.iter().position(|t| t.text == *text) {
-                        model.tasks[index] = Task::new(value);
+                        model.tasks[index] = Task::new(&value);
+                        model.add_to_sets(&value);
                     }
                 }
                 Some(Message::FilterList)
@@ -372,31 +397,39 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             let val = model.input.value();
             let index = model.input.cursor();
             if index != 0 {
-                let last_char = val.get(index - 1..index).unwrap_or("");
-                if last_char == "+" {
-                    let suggestions = model
-                        .projects
-                        .iter()
-                        .map(|s| s.clone())
-                        .collect::<Vec<String>>();
-                    model.auto_complete = Some(Autocomplete {
-                        kind: AutoCompleteKind::Project,
-                        list: suggestions,
-                        list_state: ListState::default(),
-                    })
-                } else if last_char == "@" {
-                    let suggestions = model
-                        .context
-                        .iter()
-                        .map(|s| s.clone())
-                        .collect::<Vec<String>>();
-                    model.auto_complete = Some(Autocomplete {
-                        kind: AutoCompleteKind::Context,
-                        list: suggestions,
-                        list_state: ListState::default(),
-                    })
-                } else {
+                let before = val.get(..index).unwrap_or("");
+                if before.ends_with(" ") {
                     model.auto_complete = None
+                } else if let Some(last_word) = before.split_whitespace().last() {
+                    if last_word.starts_with(PROJECT_PREFIX) {
+                        let match_word = last_word.strip_prefix(PROJECT_PREFIX).unwrap();
+                        let suggestions = model
+                            .projects
+                            .iter()
+                            .filter(|s| s.contains(match_word))
+                            .map(|s| s.clone())
+                            .collect::<Vec<String>>();
+                        model.auto_complete = Some(Autocomplete {
+                            kind: AutoCompleteKind::Project,
+                            list: suggestions,
+                            list_state: ListState::default(),
+                        })
+                    } else if last_word.starts_with(CONTEXT_PREFIX) {
+                        let match_word = last_word.strip_prefix(CONTEXT_PREFIX).unwrap();
+                        let suggestions = model
+                            .context
+                            .iter()
+                            .filter(|s| s.contains(match_word))
+                            .map(|s| s.clone())
+                            .collect::<Vec<String>>();
+                        model.auto_complete = Some(Autocomplete {
+                            kind: AutoCompleteKind::Context,
+                            list: suggestions,
+                            list_state: ListState::default(),
+                        })
+                    } else {
+                        model.auto_complete = None
+                    }
                 }
             };
             None
