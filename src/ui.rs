@@ -5,8 +5,9 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph},
     Frame,
 };
+use tui_input::Input;
 
-use crate::app::{AppState, AutoCompleteKind, InputState, Model};
+use crate::app::{AppState, Autocomplete, InputState, Model};
 
 pub fn view(model: &mut Model, f: &mut Frame<'_>) {
     let outer_block = Block::new()
@@ -19,33 +20,11 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
 
     match model.app_state {
         AppState::Edit(ref input_state) => {
-            let layout = centered_rect(50, 30, chunks[0]);
-            let width = layout.width.max(3) - 3;
-            let scroll = model.input.visual_scroll(width as usize);
-            let title = match input_state {
-                InputState::Edit => "Edit Task",
-                InputState::NewTask => "New Task",
-                InputState::Filter => "Search",
-            };
-            let input_widget = Paragraph::new(model.input.value())
-                .scroll((0, scroll as u16))
-                .block(
-                    Block::default()
-                        .title_top(title)
-                        .borders(Borders::ALL)
-                        .title("Input"),
-                );
-            f.render_widget(input_widget, layout);
-            //     // Put cursor past the end of the input text
-            let cursor_x =
-                layout.x + ((model.input.visual_cursor()).max(scroll) - scroll) as u16 + 1;
-            //     // Move one line down, from the border to the input line
-            let cursor_y = layout.y + 1;
-            f.set_cursor(cursor_x, cursor_y);
-            render_autocomplete(model, cursor_x, layout, f, &chunks);
+            let (layout, cursor_x) = render_input(&chunks, &mut model.input, input_state, f);
+            render_autocomplete(&mut model.auto_complete, cursor_x, layout, f, &chunks);
         }
         _ => {
-            let line = "d: Toggle Done; e: Edit; q: Quit; s: Search; D: Delete".to_string()
+            let line = "d: Toggle Done; e: Edit; q: Quit; Q: Quit without saving; s: Save; /: filter, D: Delete".to_string()
                 + if model.app_state == AppState::Filter {
                     &"; Esc: Discard Filter"
                 } else {
@@ -54,6 +33,38 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
             f.render_widget(Line::raw(line), chunks[1]);
         }
     }
+}
+
+fn render_input(
+    chunks: &std::rc::Rc<[Rect]>,
+    input: &mut Input,
+    input_state: &InputState,
+    f: &mut Frame<'_>,
+) -> (Rect, u16) {
+    let var_name = 0;
+    let layout = centered_rect(50, 30, chunks[var_name]);
+    let width = layout.width.max(3) - 3;
+    let scroll = input.visual_scroll(width as usize);
+    let title = match input_state {
+        InputState::Edit => "Edit Task",
+        InputState::NewTask => "New Task",
+        InputState::Filter => "Search",
+    };
+    let input_widget = Paragraph::new(input.value())
+        .scroll((0, scroll as u16))
+        .block(
+            Block::default()
+                .title_top(title)
+                .borders(Borders::ALL)
+                .title("Input"),
+        );
+    f.render_widget(input_widget, layout);
+    //     // Put cursor past the end of the input text
+    let cursor_x = layout.x + ((input.visual_cursor()).max(scroll) - scroll) as u16 + 1;
+    //     // Move one line down, from the border to the input line
+    let cursor_y = layout.y + 1;
+    f.set_cursor(cursor_x, cursor_y);
+    (layout, cursor_x)
 }
 
 fn render_task_list(
@@ -86,18 +97,18 @@ fn render_task_list(
     .block(list_block)
     .highlight_style(model.config.selected_text);
 
-    f.render_stateful_widget(list_widget, chunks[0], &mut model.state);
+    f.render_stateful_widget(list_widget, chunks[0], &mut model.list_state);
     chunks
 }
 
 fn render_autocomplete(
-    model: &mut Model,
+    auto_complete: &mut Option<Autocomplete>,
     cursor_x: u16,
     layout: Rect,
     f: &mut Frame<'_>,
     chunks: &std::rc::Rc<[Rect]>,
 ) {
-    if let Some(ref auto_complete) = model.auto_complete {
+    if let Some(auto_complete) = auto_complete {
         if auto_complete.list.len() > 0 {
             let block = Block::new().borders(Borders::NONE);
             let list_widget = List::new(
@@ -118,21 +129,10 @@ fn render_autocomplete(
                 auto_complete.list.len() as u16,
             );
             f.render_widget(Clear, rect);
-            f.render_stateful_widget(
-                list_widget,
-                rect,
-                &mut model.auto_complete.as_mut().unwrap().list_state,
-            )
+            f.render_stateful_widget(list_widget, rect, &mut auto_complete.list_state)
         }
-        let some = match model.auto_complete {
-            Some(ref c) => match c.kind {
-                AutoCompleteKind::Project => "Project",
-                AutoCompleteKind::Context => "Context",
-            },
-            None => "None",
-        };
         f.render_widget(
-            Line::raw("Enter: Save; Esc: Exit Edit Mode; D: Delete; ".to_string() + some),
+            Line::raw("Enter: Save; Esc: Exit Edit Mode; D: Delete"),
             chunks[1],
         );
     }

@@ -14,7 +14,7 @@ const CONTEXT_PREFIX: &str = "@";
 const DATE_FORMAT_STR: &[BorrowedFormatItem] = format_description!("[year]-[month]-[day]");
 
 pub fn run_app(terminal: &mut crate::tui::Tui, mut model: &mut Model) -> color_eyre::Result<bool> {
-    model.state.select(Some(0));
+    model.list_state.select(Some(0));
     while model.app_state != AppState::Done {
         terminal.draw(|f| crate::ui::view(&mut model, f))?;
 
@@ -30,7 +30,7 @@ pub fn run_app(terminal: &mut crate::tui::Tui, mut model: &mut Model) -> color_e
 
 #[derive(Debug)]
 pub struct Model {
-    pub state: ListState,
+    pub list_state: ListState,
     pub tasks: Vec<Task>,
     pub filtered_tasks: Vec<Task>,
     pub filter_str: Option<String>,
@@ -74,7 +74,7 @@ impl Model {
             .map(|a| Task::new(a))
             .collect();
         Self {
-            state: ListState::default(),
+            list_state: ListState::default(),
             tasks,
             filtered_tasks: Vec::new(),
             filter_str: None,
@@ -125,6 +125,65 @@ impl Model {
             }
         });
     }
+
+    pub fn new_task(&mut self) {
+        let value = self.input.value();
+        let task = Task::new(value);
+        self.tasks.push(task);
+        value.to_string();
+        self.add_to_sets(&value.to_string());
+    }
+
+    fn update_task(&mut self) {
+        let value = self.input.value().to_string();
+        if self.filter_str == None {
+            if let Some(index) = self.list_state.selected() {
+                let new_task = Task::new(&value);
+                self.add_to_sets(&new_task.text);
+                self.tasks[index] = new_task;
+                self.app_state = AppState::Running;
+            }
+        } else {
+            if let Some(index) = self.list_state.selected() {
+                let text = &self.filtered_tasks[index].text;
+                if let Some(index) = self.tasks.iter().position(|t| t.text == *text) {
+                    self.tasks[index] = Task::new(&value);
+                    self.add_to_sets(&value);
+                }
+            }
+            self.filter_tasks()
+        }
+    }
+
+    fn filter_tasks(&mut self) {
+        if self.filter_str.is_some() {
+            if let Some(ref value) = self.filter_str {
+                self.filtered_tasks = self
+                    .tasks
+                    .iter()
+                    .filter(|t| t.text.contains(value))
+                    .map(|a| a.clone())
+                    .collect();
+                self.app_state = AppState::Filter;
+            }
+        }
+    }
+
+    fn delete_selected_task(&mut self) {
+        if self.filter_str == None {
+            if let Some(index) = self.list_state.selected() {
+                self.tasks.remove(index);
+            };
+        } else {
+            if let Some(index) = self.list_state.selected() {
+                let text = &self.filtered_tasks[index].text;
+                if let Some(index) = self.tasks.iter().position(|t| t.text == *text) {
+                    self.tasks.remove(index);
+                };
+            }
+            self.filter_tasks();
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -135,7 +194,7 @@ pub enum AppState {
     Filter,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum InputState {
     Edit,
     NewTask,
@@ -161,14 +220,9 @@ pub enum Message {
     Prev,
     ToggleDone,
     EditorKey(KeyEvent),
-    TaskEdit,
-    NewTaskEditor,
-    SaveNewTask,
-    UpdateSelectedTask,
+    OpenInput(InputState),
+    InputAction(InputState),
     DiscardEditor,
-    FilterEditor,
-    FilterList,
-    UpdateFilterStr,
     ResetFilter,
     DeleteTask,
     HandleAutoComplete,
@@ -194,10 +248,10 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('Q') => Some(Message::QuitWithoutSave),
             KeyCode::Char('d') => Some(Message::ToggleDone),
             KeyCode::Char('D') => Some(Message::DeleteTask),
-            KeyCode::Char('e') => Some(Message::TaskEdit),
-            KeyCode::Char('n') => Some(Message::NewTaskEditor),
+            KeyCode::Char('e') => Some(Message::OpenInput(InputState::Edit)),
+            KeyCode::Char('n') => Some(Message::OpenInput(InputState::NewTask)),
             KeyCode::Char('s') => Some(Message::SaveFile),
-            KeyCode::Char('/') => Some(Message::FilterEditor),
+            KeyCode::Char('/') => Some(Message::OpenInput(InputState::Filter)),
             KeyCode::Esc if model.app_state == AppState::Filter => Some(Message::ResetFilter),
             _ => None,
         },
@@ -216,38 +270,73 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::Next => {
-            model.state.select_next();
+            model.list_state.select_next();
             None
         }
         Message::Prev => {
-            model.state.select_previous();
+            model.list_state.select_previous();
             None
         }
         Message::ToggleDone => {
-            if let Some(index) = model.state.selected() {
+            if let Some(index) = model.list_state.selected() {
                 if let Some(item) = model.tasks.get_mut(index) {
                     item.toggle_done();
                 }
             };
             None
         }
-        Message::TaskEdit => {
-            if let Some(index) = model.state.selected() {
-                let list = if model.app_state == AppState::Filter {
-                    &model.filtered_tasks
-                } else {
-                    &model.tasks
-                };
-                if let Some(value) = list.get(index) {
-                    let value = if value.done {
-                        value.text.clone()
-                    } else {
-                        value.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
+        Message::OpenInput(input_state) => {
+            match input_state {
+                InputState::Edit => {
+                    if let Some(index) = model.list_state.selected() {
+                        let list = if model.app_state == AppState::Filter {
+                            &model.filtered_tasks
+                        } else {
+                            &model.tasks
+                        };
+                        if let Some(value) = list.get(index) {
+                            let value = if value.done {
+                                value.text.clone()
+                            } else {
+                                value.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
+                            };
+                            model.input = Input::new(value);
+                        };
                     };
-                    model.input = Input::new(value);
-                };
+                    model.app_state = AppState::Edit(input_state);
+                }
+                InputState::NewTask => {
+                    let base = if model.config.add_creation_date {
+                        let local = OffsetDateTime::now_local().unwrap();
+                        local.format(&DATE_FORMAT_STR).unwrap()
+                    } else {
+                        "".to_string()
+                    };
+                    model.input = Input::new(base + " ");
+                    model.app_state = AppState::Edit(input_state);
+                }
+                InputState::Filter => {
+                    model.input.reset();
+                    model.app_state = AppState::Edit(input_state);
+                }
+            }
+            None
+        }
+        Message::InputAction(input_state) => {
+            match input_state {
+                InputState::Edit => {
+                    model.update_task();
+                }
+                InputState::NewTask => {
+                    model.new_task();
+                    model.app_state = AppState::Running;
+                }
+                InputState::Filter => {
+                    let value = model.input.value().to_string();
+                    model.filter_str = Some(value);
+                    model.filter_tasks();
+                }
             };
-            model.app_state = AppState::Edit(InputState::Edit);
             None
         }
         Message::EditorKey(event) => match event.code {
@@ -271,13 +360,10 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                     }
                 }
 
-                match model.app_state {
-                    AppState::Edit(ref input_state) => match input_state {
-                        InputState::Edit => Some(Message::UpdateSelectedTask),
-                        InputState::NewTask => Some(Message::SaveNewTask),
-                        InputState::Filter => Some(Message::UpdateFilterStr),
-                    },
-                    _ => unreachable!(),
+                if let AppState::Edit(ref input_state) = model.app_state {
+                    Some(Message::InputAction(input_state.clone()))
+                } else {
+                    None
                 }
             }
             KeyCode::Tab => {
@@ -305,69 +391,9 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 Some(Message::HandleAutoComplete)
             }
         },
-        Message::NewTaskEditor => {
-            let base = if model.config.add_creation_date {
-                let local = OffsetDateTime::now_local().unwrap();
-                local.format(&DATE_FORMAT_STR).unwrap()
-            } else {
-                "".to_string()
-            };
-            model.input = Input::new(base + " ");
-            model.app_state = AppState::Edit(InputState::NewTask);
-            None
-        }
-        Message::SaveNewTask => {
-            let value = model.input.value();
-            let task = Task::new(value);
-            model.tasks.push(task);
-            value.to_string();
-            model.add_to_sets(&value.to_string());
-            model.app_state = AppState::Running;
-            None
-        }
-        Message::UpdateSelectedTask => {
-            let value = model.input.value().to_string();
-            if model.filter_str == None {
-                if let Some(index) = model.state.selected() {
-                    let new_task = Task::new(&value);
-                    model.add_to_sets(&new_task.text);
-                    model.tasks[index] = new_task;
-                    model.app_state = AppState::Running;
-                }
-                None
-            } else {
-                if let Some(index) = model.state.selected() {
-                    let text = &model.filtered_tasks[index].text;
-                    if let Some(index) = model.tasks.iter().position(|t| t.text == *text) {
-                        model.tasks[index] = Task::new(&value);
-                        model.add_to_sets(&value);
-                    }
-                }
-                Some(Message::FilterList)
-            }
-        }
         Message::DiscardEditor => {
             model.app_state = AppState::Running;
             model.auto_complete = None;
-            None
-        }
-        Message::FilterEditor => {
-            model.input.reset();
-            model.app_state = AppState::Edit(InputState::Filter);
-            None
-        }
-        Message::FilterList => {
-            if model.filter_str.is_some() {
-                if let Some(ref value) = model.filter_str {
-                    model.filtered_tasks = model
-                        .tasks
-                        .iter()
-                        .filter(|t| t.text.contains(value))
-                        .map(|a| a.clone())
-                        .collect();
-                    model.app_state = AppState::Filter;
-                }
-            }
             None
         }
         Message::ResetFilter => {
@@ -376,26 +402,9 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             model.filter_str = None;
             None
         }
-        Message::UpdateFilterStr => {
-            let value = model.input.value().to_string();
-            model.filter_str = Some(value);
-            Some(Message::FilterList)
-        }
         Message::DeleteTask => {
-            if model.filter_str == None {
-                if let Some(index) = model.state.selected() {
-                    model.tasks.remove(index);
-                };
-                None
-            } else {
-                if let Some(index) = model.state.selected() {
-                    let text = &model.filtered_tasks[index].text;
-                    if let Some(index) = model.tasks.iter().position(|t| t.text == *text) {
-                        model.tasks.remove(index);
-                    };
-                }
-                Some(Message::FilterList)
-            }
+            model.delete_selected_task();
+            None
         }
         Message::HandleAutoComplete => {
             let val = model.input.value();
