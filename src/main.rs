@@ -1,35 +1,35 @@
-use std::{env, fs::read_to_string};
+use std::fs::read_to_string;
 
 use app::{run_app, Model};
 
 mod app;
+mod config;
 mod errors;
 mod tasks;
 mod tui;
 mod ui;
 
 fn main() -> color_eyre::Result<()> {
-    let mut pwd = env::current_dir().expect("Failed to find the Present working directory");
-    pwd.push("todo.txt");
-    let file_name = pwd.as_path();
+    let config = config::get_config();
 
-    let binding = match read_to_string(file_name) {
+    println!("{:?}", config);
+    let binding = match read_to_string(config.file_path.as_str()) {
         Ok(str) => str,
         Err(_) => {
-            println!("Failed to find the todo.txt file in the current directory");
+            println!("Failed to find the todo.txt file");
             return Ok(());
         }
     };
     let tasks = binding.lines().collect();
 
-    let file_name = String::from(file_name.to_string_lossy());
-    let mut model = Model::new(tasks, file_name);
+    let mut model = Model::new(tasks, config);
     errors::install_hooks()?;
     let mut terminal = tui::init()?;
     let save_file = run_app(&mut terminal, &mut model)?;
 
     tui::restore()?;
 
+    // this needs to matched after restoring the terminal checked so that the line is printed to the console
     if save_file {
         match model.write() {
             Err(_) => println!("There was an error in saving the todo.txt file"),

@@ -1,16 +1,12 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{palette::tailwind, Color, Style, Styled, Stylize},
+    style::{Style, Styled, Stylize},
     text::Line,
     widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph},
     Frame,
 };
 
 use crate::app::{AppState, AutoCompleteKind, InputState, Model};
-
-const SELECTED_STYLE_FG: Color = tailwind::BLUE.c300;
-const TEXT_COLOR: Color = tailwind::SLATE.c200;
-const COMPLETED_TEXT_COLOR: Color = tailwind::GREEN.c500;
 
 pub fn view(model: &mut Model, f: &mut Frame<'_>) {
     let outer_block = Block::new()
@@ -80,15 +76,15 @@ fn render_task_list(
         list.iter()
             .map(|a| {
                 ListItem::new(a.text.clone()).style(Style::new().set_style(if a.done {
-                    COMPLETED_TEXT_COLOR
+                    model.config.completed_text_color
                 } else {
-                    TEXT_COLOR
+                    model.config.text_color
                 }))
             })
             .collect::<Vec<ListItem>>(),
     )
     .block(list_block)
-    .highlight_style(SELECTED_STYLE_FG);
+    .highlight_style(model.config.selected_text);
 
     f.render_stateful_widget(list_widget, chunks[0], &mut model.state);
     chunks

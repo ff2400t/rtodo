@@ -6,7 +6,7 @@ use std::{collections::HashSet, fs::write, path::Path};
 use time::{format_description::BorrowedFormatItem, macros::format_description, OffsetDateTime};
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::tasks::Task;
+use crate::{config::Config, tasks::Task};
 
 const PENDING_PREFIX: &str = "☐ ";
 const PROJECT_PREFIX: &str = "+";
@@ -39,12 +39,12 @@ pub struct Model {
     pub projects: HashSet<String>,
     pub context: HashSet<String>,
     pub auto_complete: Option<Autocomplete>,
-    pub file_name: String,
+    pub config: Config,
     pub save_file: bool,
 }
 
 impl Model {
-    pub fn new(tasks: Vec<&str>, file_name: String) -> Self {
+    pub fn new(tasks: Vec<&str>, config: Config) -> Self {
         let mut projects = HashSet::new();
         let mut context = HashSet::new();
         tasks.iter().for_each(|t| {
@@ -83,7 +83,7 @@ impl Model {
             projects,
             context,
             auto_complete: None,
-            file_name,
+            config,
             save_file: true,
         }
     }
@@ -102,7 +102,7 @@ impl Model {
                 })
                 .collect::<Vec<String>>()
                 .join("\n");
-            let path = Path::new(self.file_name.as_str());
+            let path = Path::new(self.config.file_path.as_str());
             write(path, content)
         } else {
             Ok(())
@@ -306,8 +306,12 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             }
         },
         Message::NewTaskEditor => {
-            let local = OffsetDateTime::now_local().unwrap();
-            let base = local.format(&DATE_FORMAT_STR).unwrap();
+            let base = if model.config.add_creation_date {
+                let local = OffsetDateTime::now_local().unwrap();
+                local.format(&DATE_FORMAT_STR).unwrap()
+            } else {
+                "".to_string()
+            };
             model.input = Input::new(base + " ");
             model.app_state = AppState::Edit(InputState::NewTask);
             None
