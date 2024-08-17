@@ -134,23 +134,35 @@ impl Model {
         self.add_to_sets(&value.to_string());
     }
 
-    fn update_task(&mut self) {
+    fn update_task(&mut self, only_toggle: bool) {
         let value = self.input.value().to_string();
-        if self.filter_str == None {
-            if let Some(index) = self.list_state.selected() {
-                let new_task = Task::new(&value);
-                self.add_to_sets(&new_task.text);
-                self.tasks[index] = new_task;
-                self.app_state = AppState::Running;
-            }
-        } else {
-            if let Some(index) = self.list_state.selected() {
+        let index = if let Some(index) = self.list_state.selected() {
+            if self.filter_str == None {
+                index
+            } else {
                 let text = &self.filtered_tasks[index].text;
                 if let Some(index) = self.tasks.iter().position(|t| t.text == *text) {
-                    self.tasks[index] = Task::new(&value);
-                    self.add_to_sets(&value);
+                    index
+                } else {
+                    0
                 }
             }
+        } else {
+            0
+        };
+        if only_toggle {
+            self.tasks[index].toggle_done();
+        } else {
+            let new_task = Task::new(&value);
+            self.add_to_sets(&new_task.text);
+        }
+
+        if self.config.move_done_to_end && self.tasks[index].done {
+            if let Some(replace_index) = self.tasks.iter().rposition(|t| !t.done) {
+                self.tasks.swap(index, replace_index)
+            }
+        };
+        if self.filter_str != None {
             self.filter_tasks()
         }
     }
@@ -278,11 +290,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::ToggleDone => {
-            if let Some(index) = model.list_state.selected() {
-                if let Some(item) = model.tasks.get_mut(index) {
-                    item.toggle_done();
-                }
-            };
+            model.update_task(true);
             None
         }
         Message::OpenInput(input_state) => {
@@ -325,7 +333,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         Message::InputAction(input_state) => {
             match input_state {
                 InputState::Edit => {
-                    model.update_task();
+                    model.update_task(false);
                 }
                 InputState::NewTask => {
                     model.new_task();

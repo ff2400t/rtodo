@@ -11,6 +11,7 @@ use std::{
 pub struct Config {
     pub file_path: String,
     pub add_creation_date: bool,
+    pub move_done_to_end: bool,
     #[serde(with = "color_to_tui")]
     pub selected_text: Color,
     #[serde(with = "color_to_tui")]
@@ -27,6 +28,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             file_path: "".to_string(),
+            move_done_to_end: true,
             add_creation_date: true,
             selected_text: SELECTED_STYLE_FG,
             text_color: TEXT_COLOR,
