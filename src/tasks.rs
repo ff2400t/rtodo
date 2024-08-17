@@ -49,7 +49,6 @@ impl Task {
             };
             let rest = rest.trim();
 
-            // format!("{PENDING_PREFIX} {pri_new}{date}{rest}",).replace(pri_old, "")
             format!("{PENDING_PREFIX}{pri_new}{date}{rest}").replace(&pri_old, "")
         } else {
             self.done = true;
@@ -66,16 +65,11 @@ impl Task {
                 start_date.to_string()
             } else {
                 let local = OffsetDateTime::now_utc();
-                // match {
-                // Ok(local) => {
                 let date = local.format(&DATE_FORMAT_STR).unwrap_or("".to_string());
                 if date.is_empty() {
                     start_date.to_string()
                 } else {
                     date + " " + start_date + " "
-                    //     }
-                    // }
-                    // Err(_) => start_date.to_string() + " ",
                 }
             };
             let rest = rest.trim().trim_start();
@@ -123,9 +117,6 @@ fn get_date(input: &str) -> (&str, &str) {
             } else {
                 return def;
             }
-            // let year = chars.take(4).all(|s| s.is_digit(10));
-            // let dash1 = chars.next().unwrap() == '-';
-            // let dash2 = chars.next().unwrap() == '-';
         }
         None => {
             return def;
@@ -135,81 +126,79 @@ fn get_date(input: &str) -> (&str, &str) {
 
 #[cfg(test)]
 mod test {
+    use time::OffsetDateTime;
+
     use crate::tasks::{Task, PENDING_PREFIX};
+
+    use super::DATE_FORMAT_STR;
 
     #[test]
     fn simple_tasks() {
-        let list = vec![
+        let list: Vec<String> = vec![
             "task",
             "x done",
             "(A) task with priority",
             "x done task with priority Pri:A",
-            "2024-08-14 task with start date",
-            // "x 2024-08-14 2024-08-14 done task with start date",
-            // "(A) 2024-08-14 task with priority and start date",
-        ];
+        ]
+        .iter()
+        .map(|t| Task::new(t))
+        .map(|mut t| {
+            t.toggle_done();
+            t.text
+                .strip_prefix(PENDING_PREFIX)
+                .unwrap_or(&t.text)
+                .to_string()
+        })
+        .collect();
 
-        let toggled: Vec<String> = list
-            .iter()
-            .map(|t| Task::new(t))
-            .map(|mut t| {
-                t.toggle_done();
-                t.text
-                    .strip_prefix(PENDING_PREFIX)
-                    .unwrap_or(&t.text)
-                    .to_string()
-            })
-            .collect();
+        let expected: Vec<String> = vec![
+            "x task",
+            "done",
+            "x task with priority Pri:A",
+            "(A) done task with priority",
+        ]
+        .iter_mut()
+        .map(|m| m.to_string())
+        .collect();
 
-        assert_eq!(
-            toggled,
-            vec![
-                "x task",
-                "done",
-                "x task with priority Pri:A",
-                "(A) done task with priority",
-                "x 2024-08-14 2024-08-14 task with start date",
-                // "2024-08-14 done task with start date",
-                // "x 2024-08-14 2024-08-14 task with priority and start date Pri:A",
-            ]
-            .iter_mut()
-            .map(|m| m.to_string())
-            .collect::<Vec<String>>()
-        )
+        list.iter()
+            .zip(expected)
+            .for_each(|e| assert_eq!(*e.0, e.1));
     }
 
     #[test]
     fn tasks_with_date() {
-        let list = vec![
+        let list: Vec<String> = vec![
             "  2024-08-14   task with start date",
             "x  2024-08-15  2024-08-14  done task with start date",
             "(A)   2024-08-14   task with priority and start date",
             "  x   2024-08-14   2024-08-14 task with priority and start date Pri:A",
-        ];
+        ]
+        .iter()
+        .map(|t| Task::new(t))
+        .map(|mut t| {
+            t.toggle_done();
+            t.text
+                .strip_prefix(PENDING_PREFIX)
+                .unwrap_or(&t.text)
+                .to_string()
+        })
+        .collect();
 
-        let toggled: Vec<String> = list
-            .iter()
-            .map(|t| Task::new(t))
-            .map(|mut t| {
-                t.toggle_done();
-                t.text
-                    .strip_prefix(PENDING_PREFIX)
-                    .unwrap_or(&t.text)
-                    .to_string()
-            })
-            .collect();
+        let local = OffsetDateTime::now_utc();
+        let date = local.format(&DATE_FORMAT_STR).unwrap_or("".to_string());
 
-        assert_eq!(
-            toggled,
-            vec![
-                "x 2024-08-14 2024-08-14 task with start date",
-                "2024-08-14 done task with start date",
-                "x 2024-08-14 2024-08-14 task with priority and start date Pri:A",
-                "(A) 2024-08-14 task with priority and start date",
-            ]
-            .iter_mut()
-            .map(|m| m.to_string())
-            .collect::<Vec<String>>()
-        )
+        let expected: Vec<String> = vec![
+            &format!("x {date} 2024-08-14 task with start date"),
+            "2024-08-14 done task with start date",
+            &format!("x {date} 2024-08-14 task with priority and start date Pri:A"),
+            "(A) 2024-08-14 task with priority and start date",
+        ]
+        .iter_mut()
+        .map(|m| m.to_string())
+        .collect();
+        list.iter()
+            .zip(expected)
+            .for_each(|e| assert_eq!(*e.0, e.1));
     }
 }
