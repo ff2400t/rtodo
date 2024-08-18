@@ -60,19 +60,40 @@ impl Model {
                 }
             })
         });
-        let tasks = tasks
-            .iter()
-            .filter(|e| {
-                let temp = e.trim();
+        let tasks = {
+            let tasks: Vec<Task> = tasks
+                .iter()
+                .filter(|e| {
+                    let temp = e.trim();
 
-                if temp.is_empty() || temp == "x" {
-                    false
-                } else {
-                    true
+                    if temp.is_empty() || temp == "x" {
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .map(|a| Task::new(a))
+                .collect();
+            if config.move_done_to_end {
+                let mut todo_task: Vec<Task> = Vec::with_capacity(tasks.len());
+                let mut incomplete_tasks = Vec::new();
+
+                for task in tasks {
+                    if !task.done {
+                        todo_task.push(task)
+                    } else {
+                        incomplete_tasks.push(task)
+                    }
                 }
-            })
-            .map(|a| Task::new(a))
-            .collect();
+
+                todo_task.append(&mut incomplete_tasks);
+
+                todo_task
+            } else {
+                tasks
+            }
+        };
+
         Self {
             list_state: ListState::default(),
             tasks,
@@ -158,9 +179,8 @@ impl Model {
         }
 
         if self.config.move_done_to_end && self.tasks[index].done {
-            if let Some(replace_index) = self.tasks.iter().rposition(|t| !t.done) {
-                self.tasks.swap(index, replace_index)
-            }
+            let t = self.tasks.remove(index);
+            self.tasks.push(t);
         };
         if self.filter_str != None {
             self.filter_tasks()
