@@ -31,6 +31,7 @@ pub fn run_app(terminal: &mut crate::tui::Tui, mut model: &mut Model) -> color_e
 #[derive(Debug)]
 pub struct Model {
     pub list_state: ListState,
+    pub first_done_index: usize,
     pub tasks: Vec<Task>,
     pub filtered_tasks: Vec<Task>,
     pub filter_str: Option<String>,
@@ -60,7 +61,7 @@ impl Model {
                 }
             })
         });
-        let tasks = {
+        let (tasks, first_done_index) = {
             let tasks: Vec<Task> = tasks
                 .iter()
                 .filter(|e| {
@@ -85,18 +86,20 @@ impl Model {
                         incomplete_tasks.push(task)
                     }
                 }
+                let first_done_index = todo_task.len();
 
                 todo_task.append(&mut incomplete_tasks);
 
-                todo_task
+                (todo_task, first_done_index)
             } else {
-                tasks
+                (tasks, usize::MAX)
             }
         };
 
         Self {
             list_state: ListState::default(),
             tasks,
+            first_done_index,
             filtered_tasks: Vec::new(),
             filter_str: None,
             app_state: AppState::Running,
@@ -176,11 +179,23 @@ impl Model {
         } else {
             let new_task = Task::new(&value);
             self.add_to_sets(&new_task.text);
+            self.tasks[index] = new_task;
         }
 
-        if self.config.move_done_to_end && self.tasks[index].done {
-            let t = self.tasks.remove(index);
-            self.tasks.push(t);
+        if self.config.move_done_to_end {
+            if self.tasks[index].done {
+                let swap_index = self.first_done_index - 1;
+                if swap_index != index {
+                    self.tasks.swap(swap_index, index);
+                }
+                self.first_done_index -= 1
+            } else {
+                let swap_index = self.first_done_index;
+                if swap_index != index {
+                    self.tasks.swap(swap_index, index);
+                }
+                self.first_done_index += 1
+            }
         };
         if self.filter_str != None {
             self.filter_tasks()
