@@ -34,7 +34,8 @@ pub struct Model {
     pub first_done_index: usize,
     pub tasks: Vec<Task>,
     pub filtered_tasks: Vec<Task>,
-    pub filter_str: Option<String>,
+    pub search_input: Input,
+    pub search_input_on: bool,
     pub app_state: AppState,
     pub input: Input,
     pub projects: HashSet<String>,
@@ -101,7 +102,8 @@ impl Model {
             tasks,
             first_done_index,
             filtered_tasks: Vec::new(),
-            filter_str: None,
+            search_input: Input::default(),
+            search_input_on: false,
             app_state: AppState::Running,
             input: Input::default(),
             projects,
@@ -161,7 +163,7 @@ impl Model {
     fn update_task(&mut self, only_toggle: bool) {
         let value = self.input.value().to_string();
         let index = if let Some(index) = self.list_state.selected() {
-            if self.filter_str == None {
+            if self.search_empty() {
                 index
             } else {
                 let text = &self.filtered_tasks[index].text;
@@ -197,27 +199,27 @@ impl Model {
                 self.first_done_index += 1
             }
         };
-        if self.filter_str != None {
+        if !self.search_empty() {
             self.filter_tasks()
         }
     }
 
     fn filter_tasks(&mut self) {
-        if self.filter_str.is_some() {
-            if let Some(ref value) = self.filter_str {
-                self.filtered_tasks = self
-                    .tasks
-                    .iter()
-                    .filter(|t| t.text.contains(value))
-                    .map(|a| a.clone())
-                    .collect();
-                self.app_state = AppState::Filter;
-            }
+        let value = self.search_input.value();
+        if value.is_empty() {
+            self.filtered_tasks = Vec::new();
+        } else {
+            self.filtered_tasks = self
+                .tasks
+                .iter()
+                .filter(|t| t.text.contains(value))
+                .map(|a| a.clone())
+                .collect();
         }
     }
 
     fn delete_selected_task(&mut self) {
-        if self.filter_str == None {
+        if self.search_empty() {
             if let Some(index) = self.list_state.selected() {
                 self.tasks.remove(index);
             };
@@ -231,6 +233,10 @@ impl Model {
             self.filter_tasks();
         }
     }
+
+    fn search_empty(&self) -> bool {
+        self.search_input.value().is_empty()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -238,14 +244,12 @@ pub enum AppState {
     Running,
     Done,
     Edit(InputState),
-    Filter,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum InputState {
     Edit,
     NewTask,
-    Filter,
 }
 
 #[derive(Debug)]
@@ -261,16 +265,18 @@ pub enum AutoCompleteKind {
     Context,
 }
 
+#[derive(Clone)]
 pub enum Message {
     Quit,
     Next,
     Prev,
     ToggleDone,
     EditorKey(KeyEvent),
+    SearchKeyInput(KeyEvent),
     OpenInput(InputState),
     InputAction(InputState),
+    OpenSearch,
     DiscardEditor,
-    ResetFilter,
     DeleteTask,
     HandleAutoComplete,
     SaveFile,
@@ -288,7 +294,8 @@ fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
 
 fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
     match model.app_state {
-        AppState::Running | AppState::Filter => match key_event.code {
+        AppState::Running if model.search_input_on => Some(Message::SearchKeyInput(key_event)),
+        AppState::Running => match key_event.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Message::Prev),
             KeyCode::Down | KeyCode::Char('j') => Some(Message::Next),
             KeyCode::Char('q') => Some(Message::Quit),
@@ -298,8 +305,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('e') => Some(Message::OpenInput(InputState::Edit)),
             KeyCode::Char('n') => Some(Message::OpenInput(InputState::NewTask)),
             KeyCode::Char('s') => Some(Message::SaveFile),
-            KeyCode::Char('/') => Some(Message::OpenInput(InputState::Filter)),
-            KeyCode::Esc if model.app_state == AppState::Filter => Some(Message::ResetFilter),
+            KeyCode::Char('/') => Some(Message::OpenSearch),
             _ => None,
         },
         AppState::Edit(_) => match key_event.code {
@@ -332,7 +338,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             match input_state {
                 InputState::Edit => {
                     if let Some(index) = model.list_state.selected() {
-                        let list = if model.app_state == AppState::Filter {
+                        let list = if !model.search_empty() {
                             &model.filtered_tasks
                         } else {
                             &model.tasks
@@ -358,10 +364,6 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                     model.input = Input::new(base + " ");
                     model.app_state = AppState::Edit(input_state);
                 }
-                InputState::Filter => {
-                    model.input.reset();
-                    model.app_state = AppState::Edit(input_state);
-                }
             }
             None
         }
@@ -373,11 +375,6 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 InputState::NewTask => {
                     model.new_task();
                     model.app_state = AppState::Running;
-                }
-                InputState::Filter => {
-                    let value = model.input.value().to_string();
-                    model.filter_str = Some(value);
-                    model.filter_tasks();
                 }
             };
             None
@@ -439,12 +436,6 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             model.auto_complete = None;
             None
         }
-        Message::ResetFilter => {
-            model.app_state = AppState::Running;
-            model.filtered_tasks = Vec::new();
-            model.filter_str = None;
-            None
-        }
         Message::DeleteTask => {
             model.delete_selected_task();
             None
@@ -497,6 +488,22 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         Message::QuitWithoutSave => {
             model.save_file = false;
             model.app_state = AppState::Done;
+            None
+        }
+        Message::OpenSearch => {
+            model.search_input_on = true;
+            None
+        }
+        Message::SearchKeyInput(key_event) => {
+            match key_event.code {
+                KeyCode::Enter => {
+                    model.search_input_on = false;
+                }
+                _ => {
+                    model.search_input.handle_event(&Event::Key(key_event));
+                }
+            };
+            model.filter_tasks();
             None
         }
     }

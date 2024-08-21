@@ -1,7 +1,7 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Style, Styled, Stylize},
-    text::Line,
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph},
     Frame,
 };
@@ -11,27 +11,76 @@ use crate::app::{AppState, Autocomplete, InputState, Model};
 
 pub fn view(model: &mut Model, f: &mut Frame<'_>) {
     let outer_block = Block::new()
-        .title("Todo")
         .title_alignment(ratatui::layout::Alignment::Center)
-        .borders(Borders::ALL)
-        .padding(Padding::new(1, 1, 1, 0));
+        .padding(Padding::uniform(1));
 
-    let chunks = render_task_list(outer_block, f, model);
+    let inner_block = outer_block.inner(f.size());
+
+    let chunks = Layout::default()
+        .constraints([Constraint::Max(1), Constraint::Min(8), Constraint::Max(1)])
+        .split(inner_block);
+
+    // search input
+    render_search_input(model, &chunks, f);
+    render_task_list(&chunks, f, model);
+    render_statusline(f, &chunks);
 
     match model.app_state {
         AppState::Edit(ref input_state) => {
             let (layout, cursor_x) = render_input(&chunks, &mut model.input, input_state, f);
             render_autocomplete(&mut model.auto_complete, cursor_x, layout, f, &chunks);
         }
-        _ => {
-            let line = "d: Toggle Done; e: Edit; q: Quit; Q: Quit without saving; s: Save; /: filter, D: Delete".to_string()
-                + if model.app_state == AppState::Filter {
-                    &"; Esc: Discard Filter"
-                } else {
-                    &""
-                };
-            f.render_widget(Line::raw(line), chunks[1]);
-        }
+        _ => (),
+    };
+}
+
+fn render_statusline(f: &mut Frame<'_>, chunks: &std::rc::Rc<[Rect]>) {
+    let space_2 = "  ";
+    let options = [
+        " d: Toggle ",
+        space_2,
+        " e: Edit ",
+        space_2,
+        " q: Quit ",
+        space_2,
+        " s: Save ",
+        space_2,
+        " /: Search ",
+        space_2,
+        " D: Delete ",
+    ];
+
+    let line = options
+        .iter()
+        .map(|a| {
+            if **a != *space_2 {
+                Span::styled(*a, Style::default().on_gray().black())
+            } else {
+                Span::raw(space_2)
+            }
+        })
+        .collect::<Vec<Span>>();
+    f.render_widget(Line::from(line), chunks[2]);
+}
+
+fn render_search_input(model: &mut Model, chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>) {
+    let layout = chunks[0];
+    if model.search_input_on {
+        let input_widget = Paragraph::new(model.search_input.value()).block(Block::new());
+        f.render_widget(input_widget, layout);
+        let cursor_x = layout.x + model.search_input.visual_cursor() as u16 + 1;
+        //     // Move one line down, from the border to the input line
+        f.set_cursor(cursor_x, layout.y);
+    } else {
+        let text = if model.search_input.value().is_empty() {
+            "No search is active at the moment"
+        } else {
+            model.search_input.value()
+        };
+        let input_widget = Paragraph::new(text)
+            .style(Style::default().gray())
+            .block(Block::new());
+        f.render_widget(input_widget, layout);
     }
 }
 
@@ -48,7 +97,6 @@ fn render_input(
     let title = match input_state {
         InputState::Edit => "Edit Task",
         InputState::NewTask => "New Task",
-        InputState::Filter => "Search",
     };
     let input_widget = Paragraph::new(input.value())
         .scroll((0, scroll as u16))
@@ -67,26 +115,17 @@ fn render_input(
     (layout, cursor_x)
 }
 
-fn render_task_list(
-    outer_block: Block<'_>,
-    f: &mut Frame<'_>,
-    model: &mut Model,
-) -> std::rc::Rc<[Rect]> {
-    let outer_area = outer_block.inner(f.size());
-    let chunks = Layout::default()
-        .constraints([Constraint::Min(10), Constraint::Max(1)])
-        .split(outer_area);
-    f.render_widget(outer_block, f.size());
-    let list_block = Block::new().borders(Borders::BOTTOM);
-    let list = if model.filter_str.is_some() {
-        &model.filtered_tasks
-    } else {
+fn render_task_list(chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>, model: &mut Model) {
+    let list_block = Block::new().borders(Borders::BOTTOM | Borders::TOP);
+    let list = if model.search_input.value().is_empty() {
         &model.tasks
+    } else {
+        &model.filtered_tasks
     };
     let list_widget = List::new(
         list.iter()
             .map(|a| {
-                ListItem::new(a.text.clone()).style(Style::new().set_style(if a.done {
+                ListItem::new(a.text.as_str()).style(Style::new().set_style(if a.done {
                     model.config.completed_text_color
                 } else {
                     model.config.text_color
@@ -97,8 +136,7 @@ fn render_task_list(
     .block(list_block)
     .highlight_style(model.config.selected_text);
 
-    f.render_stateful_widget(list_widget, chunks[0], &mut model.list_state);
-    chunks
+    f.render_stateful_widget(list_widget, chunks[1], &mut model.list_state);
 }
 
 fn render_autocomplete(
