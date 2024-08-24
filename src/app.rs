@@ -34,8 +34,7 @@ pub struct Model {
     pub first_done_index: usize,
     pub tasks: Vec<Task>,
     pub filtered_tasks: Vec<Task>,
-    pub search_input: Input,
-    pub search_input_on: bool,
+    pub search: SearchInput,
     pub app_state: AppState,
     pub input: Input,
     pub projects: HashSet<String>,
@@ -102,8 +101,7 @@ impl Model {
             tasks,
             first_done_index,
             filtered_tasks: Vec::new(),
-            search_input: Input::default(),
-            search_input_on: false,
+            search: SearchInput::new(),
             app_state: AppState::Running,
             input: Input::default(),
             projects,
@@ -163,7 +161,7 @@ impl Model {
     fn update_task(&mut self, only_toggle: bool) {
         let value = self.input.value().to_string();
         let index = if let Some(index) = self.list_state.selected() {
-            if self.search_empty() {
+            if self.search.is_empty() {
                 index
             } else {
                 let text = &self.filtered_tasks[index].text;
@@ -199,13 +197,10 @@ impl Model {
                 self.first_done_index += 1
             }
         };
-        if !self.search_empty() {
-            self.filter_tasks()
-        }
     }
 
     fn filter_tasks(&mut self) {
-        let value = self.search_input.value();
+        let value = self.search.input.value();
         if value.is_empty() {
             self.filtered_tasks = Vec::new();
         } else {
@@ -219,7 +214,7 @@ impl Model {
     }
 
     fn delete_selected_task(&mut self) {
-        if self.search_empty() {
+        if self.search.is_empty() {
             if let Some(index) = self.list_state.selected() {
                 self.tasks.remove(index);
             };
@@ -232,10 +227,6 @@ impl Model {
             }
             self.filter_tasks();
         }
-    }
-
-    fn search_empty(&self) -> bool {
-        self.search_input.value().is_empty()
     }
 }
 
@@ -279,6 +270,8 @@ pub enum Message {
     DiscardEditor,
     DeleteTask,
     HandleAutoComplete,
+    AutoCompleteAppend,
+    AutoCompleteMove(KeyEvent),
     SaveFile,
     QuitWithoutSave,
 }
@@ -294,7 +287,7 @@ fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
 
 fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
     match model.app_state {
-        AppState::Running if model.search_input_on => Some(Message::SearchKeyInput(key_event)),
+        AppState::Running if model.search.active => Some(Message::SearchKeyInput(key_event)),
         AppState::Running => match key_event.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Message::Prev),
             KeyCode::Down | KeyCode::Char('j') => Some(Message::Next),
@@ -338,7 +331,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             match input_state {
                 InputState::Edit => {
                     if let Some(index) = model.list_state.selected() {
-                        let list = if !model.search_empty() {
+                        let list = if !model.search.is_empty() {
                             &model.filtered_tasks
                         } else {
                             &model.tasks
@@ -371,6 +364,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             match input_state {
                 InputState::Edit => {
                     model.update_task(false);
+                    model.app_state = AppState::Running;
                 }
                 InputState::NewTask => {
                     model.new_task();
@@ -382,50 +376,14 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         Message::EditorKey(event) => match event.code {
             KeyCode::Enter => {
                 if model.auto_complete.is_some() {
-                    let ac = model.auto_complete.as_ref().unwrap();
-                    if let Some(index) = ac.list_state.selected() {
-                        if let Some(selected) = ac.list.get(index) {
-                            let cursor_index = model.input.cursor();
-                            let (before, after) = model.input.value().split_at(cursor_index);
-                            let ac_prefix = match ac.kind {
-                                AutoCompleteKind::Project => PROJECT_PREFIX,
-                                AutoCompleteKind::Context => CONTEXT_PREFIX,
-                            };
-                            let (before, _) = before.rsplit_once(ac_prefix).unwrap();
-                            let value = before.to_string() + ac_prefix + selected + after;
-                            model.input = Input::new(value);
-                            model.auto_complete = None;
-                            return None;
-                        }
-                    }
-                }
-
-                if let AppState::Edit(ref input_state) = model.app_state {
+                    Some(Message::AutoCompleteAppend)
+                } else if let AppState::Edit(ref input_state) = model.app_state {
                     Some(Message::InputAction(input_state.clone()))
                 } else {
                     None
                 }
             }
-            KeyCode::Tab => {
-                if model.auto_complete.is_some() {
-                    if event.modifiers.contains(KeyModifiers::SHIFT) {
-                        model
-                            .auto_complete
-                            .as_mut()
-                            .unwrap()
-                            .list_state
-                            .select_previous();
-                    } else {
-                        model
-                            .auto_complete
-                            .as_mut()
-                            .unwrap()
-                            .list_state
-                            .select_next();
-                    }
-                };
-                None
-            }
+            KeyCode::Tab => Some(Message::AutoCompleteMove(event)),
             _ => {
                 model.input.handle_event(&Event::Key(event));
                 Some(Message::HandleAutoComplete)
@@ -441,11 +399,14 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::HandleAutoComplete => {
-            let val = model.input.value();
-            let index = model.input.cursor();
+            let (val, index) = if model.search.active {
+                (model.search.input.value(), model.search.input.cursor())
+            } else {
+                (model.input.value(), model.input.cursor())
+            };
             if index != 0 {
                 let before = val.get(..index).unwrap_or("");
-                if before.ends_with(" ") {
+                if before.is_empty() || before.ends_with(" ") {
                     model.auto_complete = None
                 } else if let Some(last_word) = before.split_whitespace().last() {
                     if last_word.starts_with(PROJECT_PREFIX) {
@@ -456,11 +417,13 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                             .filter(|s| s.contains(match_word))
                             .map(|s| s.clone())
                             .collect::<Vec<String>>();
-                        model.auto_complete = Some(Autocomplete {
-                            kind: AutoCompleteKind::Project,
-                            list: suggestions,
-                            list_state: ListState::default(),
-                        })
+                        if suggestions.len() > 0 {
+                            model.auto_complete = Some(Autocomplete {
+                                kind: AutoCompleteKind::Project,
+                                list: suggestions,
+                                list_state: ListState::default().with_selected(Some(0)),
+                            })
+                        }
                     } else if last_word.starts_with(CONTEXT_PREFIX) {
                         let match_word = last_word.strip_prefix(CONTEXT_PREFIX).unwrap();
                         let suggestions = model
@@ -469,11 +432,13 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                             .filter(|s| s.contains(match_word))
                             .map(|s| s.clone())
                             .collect::<Vec<String>>();
-                        model.auto_complete = Some(Autocomplete {
-                            kind: AutoCompleteKind::Context,
-                            list: suggestions,
-                            list_state: ListState::default(),
-                        })
+                        if suggestions.len() > 0 {
+                            model.auto_complete = Some(Autocomplete {
+                                kind: AutoCompleteKind::Context,
+                                list: suggestions,
+                                list_state: ListState::default().with_selected(Some(0)),
+                            })
+                        }
                     } else {
                         model.auto_complete = None
                     }
@@ -491,20 +456,112 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::OpenSearch => {
-            model.search_input_on = true;
+            model.search.prev_value = model.search.input.value().to_string();
+            model.search.active = true;
             None
         }
-        Message::SearchKeyInput(key_event) => {
-            match key_event.code {
-                KeyCode::Enter => {
-                    model.search_input_on = false;
+        Message::SearchKeyInput(key_event) => match key_event.code {
+            KeyCode::Enter => {
+                if model.auto_complete.is_some() {
+                    Some(Message::AutoCompleteAppend)
+                } else {
+                    model.search.active = false;
+                    None
                 }
-                _ => {
-                    model.search_input.handle_event(&Event::Key(key_event));
+            }
+            KeyCode::Esc => {
+                model.search.active = false;
+                if !model.search.prev_value.is_empty() {
+                    model.search.input = Input::new(model.search.prev_value.clone());
+                }
+                None
+            }
+            KeyCode::Tab => Some(Message::AutoCompleteMove(key_event)),
+            _ => {
+                model.search.input.handle_event(&Event::Key(key_event));
+                model.filter_tasks();
+                Some(Message::HandleAutoComplete)
+            }
+        },
+        Message::AutoCompleteAppend => {
+            if let Some(ac) = model.auto_complete.as_ref() {
+                if let Some(index) = ac.list_state.selected() {
+                    if let Some(selected) = ac.list.get(index) {
+                        let input = if model.search.active {
+                            &model.search.input
+                        } else {
+                            &model.input
+                        };
+                        let cursor_index = input.cursor();
+                        let (before, after) = input.value().split_at(cursor_index);
+                        let ac_prefix = match ac.kind {
+                            AutoCompleteKind::Project => PROJECT_PREFIX,
+                            AutoCompleteKind::Context => CONTEXT_PREFIX,
+                        };
+                        if let Some((before, _)) = before.rsplit_once(ac_prefix) {
+                            let value = before.to_string() + ac_prefix + selected + after;
+                            if model.search.active {
+                                model.search.input = Input::new(value)
+                                    .with_cursor(before.len() + ac_prefix.len() + selected.len());
+                            } else {
+                                model.input = Input::new(value)
+                                    .with_cursor(before.len() + ac_prefix.len() + selected.len());
+                            };
+                        }
+                        model.auto_complete = None;
+                    };
+                };
+            }
+            None
+        }
+        Message::AutoCompleteMove(key_event) => {
+            if let Some(ref mut ac) = model.auto_complete {
+                if let Some(selected) = ac.list_state.selected() {
+                    if key_event.modifiers.contains(KeyModifiers::SHIFT) {
+                        if selected == 0 {
+                            ac.list_state.select(Some(ac.list.len() - 1))
+                        } else {
+                            ac.list_state.select_previous()
+                        }
+                        model
+                            .auto_complete
+                            .as_mut()
+                            .unwrap()
+                            .list_state
+                            .select_previous();
+                    } else {
+                        if selected == ac.list.len() {
+                            ac.list_state.select(Some(0))
+                        } else {
+                            ac.list_state.select_next()
+                        }
+                    }
+                } else {
+                    ac.list_state.select(Some(0))
                 }
             };
-            model.filter_tasks();
             None
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct SearchInput {
+    pub input: Input,
+    pub active: bool,
+    pub prev_value: String,
+}
+
+impl SearchInput {
+    fn new() -> Self {
+        Self {
+            input: Input::default(),
+            active: false,
+            prev_value: "".to_string(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.input.value().is_empty()
     }
 }

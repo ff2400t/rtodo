@@ -20,15 +20,15 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
         .constraints([Constraint::Max(1), Constraint::Min(8), Constraint::Max(1)])
         .split(inner_block);
 
-    // search input
-    render_search_input(model, &chunks, f);
     render_task_list(&chunks, f, model);
     render_statusline(f, &chunks);
+    // Render this last so that Autocomplete rendering works:w:w
+    render_search_input(model, &chunks, f);
 
     match model.app_state {
         AppState::Edit(ref input_state) => {
             let (layout, cursor_x) = render_input(&chunks, &mut model.input, input_state, f);
-            render_autocomplete(&mut model.auto_complete, cursor_x, layout, f, &chunks);
+            render_autocomplete(&mut model.auto_complete, cursor_x, layout, false, f);
         }
         _ => (),
     };
@@ -65,17 +65,18 @@ fn render_statusline(f: &mut Frame<'_>, chunks: &std::rc::Rc<[Rect]>) {
 
 fn render_search_input(model: &mut Model, chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>) {
     let layout = chunks[0];
-    if model.search_input_on {
-        let input_widget = Paragraph::new(model.search_input.value()).block(Block::new());
+    if model.search.active {
+        let input_widget = Paragraph::new(model.search.input.value()).block(Block::new());
         f.render_widget(input_widget, layout);
-        let cursor_x = layout.x + model.search_input.visual_cursor() as u16 + 1;
+        let cursor_x = layout.x + model.search.input.visual_cursor() as u16;
         //     // Move one line down, from the border to the input line
         f.set_cursor(cursor_x, layout.y);
+        render_autocomplete(&mut model.auto_complete, cursor_x, layout, true, f);
     } else {
-        let text = if model.search_input.value().is_empty() {
+        let text = if model.search.input.value().is_empty() {
             "No search is active at the moment"
         } else {
-            model.search_input.value()
+            model.search.input.value()
         };
         let input_widget = Paragraph::new(text)
             .style(Style::default().gray())
@@ -90,8 +91,7 @@ fn render_input(
     input_state: &InputState,
     f: &mut Frame<'_>,
 ) -> (Rect, u16) {
-    let var_name = 0;
-    let layout = centered_rect(50, 30, chunks[var_name]);
+    let layout = centered_rect(50, 30, chunks[1]);
     let width = layout.width.max(3) - 3;
     let scroll = input.visual_scroll(width as usize);
     let title = match input_state {
@@ -117,7 +117,7 @@ fn render_input(
 
 fn render_task_list(chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>, model: &mut Model) {
     let list_block = Block::new().borders(Borders::BOTTOM | Borders::TOP);
-    let list = if model.search_input.value().is_empty() {
+    let list = if model.search.input.value().is_empty() {
         &model.tasks
     } else {
         &model.filtered_tasks
@@ -143,8 +143,8 @@ fn render_autocomplete(
     auto_complete: &mut Option<Autocomplete>,
     cursor_x: u16,
     layout: Rect,
+    is_search: bool,
     f: &mut Frame<'_>,
-    chunks: &std::rc::Rc<[Rect]>,
 ) {
     if let Some(auto_complete) = auto_complete {
         if auto_complete.list.len() > 0 {
@@ -161,18 +161,14 @@ fn render_autocomplete(
             .block(block);
 
             let rect = Rect::new(
-                cursor_x + 1,
-                layout.y + 2,
+                cursor_x + if is_search { 0 } else { 1 },
+                layout.y + if is_search { 1 } else { 2 },
                 20,
                 auto_complete.list.len() as u16,
             );
             f.render_widget(Clear, rect);
             f.render_stateful_widget(list_widget, rect, &mut auto_complete.list_state)
         }
-        f.render_widget(
-            Line::raw("Enter: Save; Esc: Exit Edit Mode; D: Delete"),
-            chunks[1],
-        );
     }
 }
 
