@@ -247,6 +247,7 @@ pub enum AppState {
 pub enum InputState {
     Edit,
     NewTask,
+    CopyTask,
 }
 
 #[derive(Debug)]
@@ -303,6 +304,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('D') => Some(Message::DeleteTask),
             KeyCode::Char('e') => Some(Message::OpenInput(InputState::Edit)),
             KeyCode::Char('n') => Some(Message::OpenInput(InputState::NewTask)),
+            KeyCode::Char('c') => Some(Message::OpenInput(InputState::CopyTask)),
             KeyCode::Char('s') => Some(Message::SaveFile),
             KeyCode::Char('/') => Some(Message::OpenSearch),
             _ => None,
@@ -363,6 +365,24 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                     model.input = Input::new(base + " ");
                     model.app_state = AppState::Edit(input_state);
                 }
+                InputState::CopyTask => {
+                    if let Some(index) = model.list_state.selected() {
+                        let list = if !model.search.is_empty() {
+                            &model.filtered_tasks
+                        } else {
+                            &model.tasks
+                        };
+                        if let Some(value) = list.get(index) {
+                            let value = if value.done {
+                                value.text.clone()
+                            } else {
+                                value.text.strip_prefix(PENDING_PREFIX).unwrap().to_string()
+                            };
+                            model.input = Input::new(value);
+                        };
+                    };
+                    model.app_state = AppState::Edit(input_state);
+                }
             }
             None
         }
@@ -370,13 +390,12 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             match input_state {
                 InputState::Edit => {
                     model.update_task(false);
-                    model.app_state = AppState::Running;
                 }
-                InputState::NewTask => {
+                InputState::NewTask | InputState::CopyTask => {
                     model.new_task();
-                    model.app_state = AppState::Running;
                 }
             };
+            model.app_state = AppState::Running;
             None
         }
         Message::EditorKey(event) => match event.code {

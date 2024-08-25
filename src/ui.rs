@@ -96,7 +96,7 @@ fn render_input(
     let scroll = input.visual_scroll(width as usize);
     let title = match input_state {
         InputState::Edit => "Edit Task",
-        InputState::NewTask => "New Task",
+        InputState::NewTask | InputState::CopyTask => "New Task",
     };
     let input_widget = Paragraph::new(input.value())
         .scroll((0, scroll as u16))
