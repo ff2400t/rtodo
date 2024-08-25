@@ -1,8 +1,8 @@
-use time::{format_description::BorrowedFormatItem, macros::format_description, OffsetDateTime};
+use chrono::{format::StrftimeItems, Local};
 
 const DONE_PREFIX: &str = "x ";
 const PENDING_PREFIX: &str = "☐ ";
-const DATE_FORMAT_STR: &[BorrowedFormatItem] = format_description!("[year]-[month]-[day]");
+pub const DATE_FORMAT_STR: StrftimeItems<'_> = StrftimeItems::new("%Y-%m-%d");
 
 #[derive(Clone, Debug)]
 pub struct Task {
@@ -64,12 +64,12 @@ impl Task {
             let date = if start_date.is_empty() {
                 start_date.to_string()
             } else {
-                let local = OffsetDateTime::now_utc();
-                let date = local.format(&DATE_FORMAT_STR).unwrap_or("".to_string());
-                if date.is_empty() {
-                    start_date.to_string()
+                let local = Local::now();
+                let completion_date = local.format("%Y-%m-%d").to_string();
+                if completion_date.is_empty() {
+                    start_date.to_string() + " "
                 } else {
-                    date + " " + start_date + " "
+                    completion_date + " " + start_date + " "
                 }
             };
             let rest = rest.trim().trim_start();
@@ -126,9 +126,9 @@ fn get_date(input: &str) -> (&str, &str) {
 
 #[cfg(test)]
 mod test {
-    use time::OffsetDateTime;
 
     use crate::tasks::{Task, PENDING_PREFIX};
+    use chrono::Local;
 
     use super::DATE_FORMAT_STR;
 
@@ -185,8 +185,8 @@ mod test {
         })
         .collect();
 
-        let local = OffsetDateTime::now_utc();
-        let date = local.format(&DATE_FORMAT_STR).unwrap_or("".to_string());
+        let local = Local::now();
+        let date = local.format_with_items(DATE_FORMAT_STR).to_string();
 
         let expected: Vec<String> = vec![
             &format!("x {date} 2024-08-14 task with start date"),

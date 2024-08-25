@@ -1,17 +1,19 @@
+use chrono::Local;
 use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     widgets::ListState,
 };
 use std::{collections::HashSet, fs::write, path::Path};
-use time::{format_description::BorrowedFormatItem, macros::format_description, OffsetDateTime};
 use tui_input::{backend::crossterm::EventHandler, Input};
 
-use crate::{config::Config, tasks::Task};
+use crate::{
+    config::Config,
+    tasks::{Task, DATE_FORMAT_STR},
+};
 
 const PENDING_PREFIX: &str = "☐ ";
 const PROJECT_PREFIX: &str = "+";
 const CONTEXT_PREFIX: &str = "@";
-const DATE_FORMAT_STR: &[BorrowedFormatItem] = format_description!("[year]-[month]-[day]");
 
 pub fn run_app(terminal: &mut crate::tui::Tui, mut model: &mut Model) -> color_eyre::Result<bool> {
     model.list_state.select(Some(0));
@@ -357,8 +359,8 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 }
                 InputState::NewTask => {
                     let base = if model.config.add_creation_date {
-                        let local = OffsetDateTime::now_local().unwrap();
-                        local.format(&DATE_FORMAT_STR).unwrap()
+                        let local = Local::now();
+                        local.format_with_items(DATE_FORMAT_STR).to_string()
                     } else {
                         "".to_string()
                     };
