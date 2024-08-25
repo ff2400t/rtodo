@@ -67,11 +67,7 @@ impl Model {
                 .filter(|e| {
                     let temp = e.trim();
 
-                    if temp.is_empty() || temp == "x" {
-                        false
-                    } else {
-                        true
-                    }
+                    !(temp.is_empty() || temp == "x")
                 })
                 .map(|a| Task::new(a))
                 .collect();
@@ -154,8 +150,8 @@ impl Model {
         let value = self.input.value();
         let task = Task::new(value);
         self.tasks.push(task);
-        value.to_string();
         self.add_to_sets(&value.to_string());
+        self.move_done_tasks(self.tasks.len() - 1);
     }
 
     fn update_task(&mut self, only_toggle: bool) {
@@ -176,23 +172,33 @@ impl Model {
         };
         if only_toggle {
             self.tasks[index].toggle_done();
+            self.move_done_tasks(index);
         } else {
             let new_task = Task::new(&value);
+            let move_task = self.tasks[index].done != new_task.done;
             self.add_to_sets(&new_task.text);
             self.tasks[index] = new_task;
-        }
+            if move_task {
+                self.move_done_tasks(index);
+            }
+        };
 
+        if !self.search.is_empty() {
+            self.filter_tasks()
+        }
+    }
+
+    fn move_done_tasks(&mut self, index: usize) {
         if self.config.move_done_to_end {
             if self.tasks[index].done {
-                let swap_index = self.first_done_index - 1;
-                if swap_index != index {
-                    self.tasks.swap(swap_index, index);
+                // a new task which is marked as done shouldn't be moved
+                if index < self.first_done_index && self.first_done_index != index {
+                    self.tasks[index..self.first_done_index].rotate_left(1);
                 }
                 self.first_done_index -= 1
             } else {
-                let swap_index = self.first_done_index;
-                if swap_index != index {
-                    self.tasks.swap(swap_index, index);
+                if self.first_done_index != index {
+                    self.tasks[self.first_done_index..index + 1].rotate_right(1);
                 }
                 self.first_done_index += 1
             }
