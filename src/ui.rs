@@ -1,5 +1,5 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Style, Styled, Stylize},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph},
@@ -14,7 +14,7 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
         .title_alignment(ratatui::layout::Alignment::Center)
         .padding(Padding::uniform(1));
 
-    let inner_block = outer_block.inner(f.size());
+    let inner_block = outer_block.inner(f.area());
 
     let chunks = Layout::default()
         .constraints([Constraint::Max(1), Constraint::Min(8), Constraint::Max(1)])
@@ -70,7 +70,7 @@ fn render_search_input(model: &mut Model, chunks: &std::rc::Rc<[Rect]>, f: &mut 
         f.render_widget(input_widget, layout);
         let cursor_x = layout.x + model.search.input.visual_cursor() as u16;
         //     // Move one line down, from the border to the input line
-        f.set_cursor(cursor_x, layout.y);
+        f.set_cursor_position(Position::new(cursor_x, layout.y));
         render_autocomplete(&mut model.auto_complete, cursor_x, layout, true, f);
     } else {
         let text = if model.search.input.value().is_empty() {
@@ -111,7 +111,7 @@ fn render_input(
     let cursor_x = layout.x + ((input.visual_cursor()).max(scroll) - scroll) as u16 + 1;
     //     // Move one line down, from the border to the input line
     let cursor_y = layout.y + 1;
-    f.set_cursor(cursor_x, cursor_y);
+    f.set_cursor_position(Position::new(cursor_x, cursor_y));
     (layout, cursor_x)
 }
 
