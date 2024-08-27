@@ -8,7 +8,7 @@ use tui_input::{backend::crossterm::EventHandler, Input};
 
 use crate::{
     config::Config,
-    tasks::{Task, DATE_FORMAT_STR},
+    tasks::{Task, DATE_FORMAT_CONST},
 };
 
 const PENDING_PREFIX: &str = "☐ ";
@@ -173,8 +173,14 @@ impl Model {
             0
         };
         if only_toggle {
-            self.tasks[index].toggle_done();
+            let task = self.tasks[index].toggle_done();
             self.move_done_tasks(index);
+            if let Some(new_task) = task {
+                self.add_to_sets(&new_task.text);
+                self.tasks.push(new_task);
+                let index = self.tasks.len() - 1;
+                self.move_done_tasks(index);
+            }
         } else {
             let new_task = Task::new(&value);
             let move_task = self.tasks[index].done != new_task.done;
@@ -360,7 +366,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 InputState::NewTask => {
                     let base = if model.config.add_creation_date {
                         let local = Local::now();
-                        local.format_with_items(DATE_FORMAT_STR).to_string()
+                        local.format_with_items(DATE_FORMAT_CONST).to_string()
                     } else {
                         "".to_string()
                     };

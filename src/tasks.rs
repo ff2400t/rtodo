@@ -1,8 +1,11 @@
-use chrono::{format::StrftimeItems, Local};
+use chrono::{format::StrftimeItems, Days, Local, Months, NaiveDate};
 
 const DONE_PREFIX: &str = "x ";
 const PENDING_PREFIX: &str = "☐ ";
-pub const DATE_FORMAT_STR: StrftimeItems<'_> = StrftimeItems::new("%Y-%m-%d");
+const DUE_KEY: &str = "due:";
+const REC_KEY: &str = "rec:";
+pub const DATE_FORMAT_STR: &str = "%Y-%m-%d";
+pub const DATE_FORMAT_CONST: StrftimeItems<'_> = StrftimeItems::new(DATE_FORMAT_STR);
 
 #[derive(Clone, Debug)]
 pub struct Task {
@@ -17,14 +20,18 @@ impl Task {
         let text = if done {
             text.to_string()
         } else {
-            (PENDING_PREFIX.to_string() + text).to_string()
+            if text.starts_with(PENDING_PREFIX) {
+                text.to_string()
+            } else {
+                (PENDING_PREFIX.to_string() + text).to_string()
+            }
         };
         Self { done, text }
     }
 
-    pub fn toggle_done(&mut self) {
+    pub fn toggle_done(&mut self) -> Option<Task> {
         const PRIORITY_KEY: &str = "Pri:";
-        self.text = if self.done {
+        if self.done {
             self.done = false;
             let text = self.text.clone();
             let priority_kv = text
@@ -48,8 +55,7 @@ impl Task {
                 "".to_string()
             };
             let rest = rest.trim();
-
-            format!("{PENDING_PREFIX}{pri_new}{date}{rest}").replace(&pri_old, "")
+            self.text = format!("{PENDING_PREFIX}{pri_new}{date}{rest}").replace(&pri_old, "")
         } else {
             self.done = true;
             let text = self.text.clone();
@@ -73,9 +79,15 @@ impl Task {
                 }
             };
             let rest = rest.trim().trim_start();
+            let due_date = try_rec(rest);
 
-            format!("{DONE_PREFIX}{date}{rest}{priority}")
-        }
+            self.text = format!("{DONE_PREFIX}{date}{rest}{priority}");
+            if let Some((old, new)) = due_date {
+                let text = text.replace(&old, &new);
+                return Some(Task::new(&text));
+            }
+        };
+        None
     }
 }
 
@@ -124,13 +136,102 @@ fn get_date(input: &str) -> (&str, &str) {
     }
 }
 
+fn try_rec(input: &str) -> Option<(String, String)> {
+    if let Some(rec) = input
+        .split_whitespace()
+        .filter(|e| e.starts_with(REC_KEY))
+        .last()
+    {
+        if let Some(old_date_str) = input
+            .split_whitespace()
+            .filter(|e| e.starts_with(DUE_KEY))
+            .last()
+        {
+            let old_date_str = old_date_str.strip_prefix(DUE_KEY).unwrap();
+            let rec = rec.strip_prefix(REC_KEY).unwrap();
+            if let Some((strict, num, duration)) = parse_rec(rec) {
+                let old_date = if strict {
+                    // strict means due date is calculated based on the last due date
+                    match NaiveDate::parse_from_str(old_date_str, DATE_FORMAT_STR) {
+                        Ok(t) => t,
+                        Err(_) => return None,
+                    }
+                } else {
+                    // else due date is based on the current date
+                    let local = Local::now();
+                    local.date_naive()
+                };
+                let new_date = match duration {
+                    'w' => old_date.checked_add_days(Days::new(num * 7)),
+                    'm' => {
+                        let num = match u32::try_from(num) {
+                            Ok(m) => m,
+                            Err(_) => return None,
+                        };
+                        old_date.checked_add_months(Months::new(num))
+                    }
+                    'y' => {
+                        let num = match u32::try_from(num) {
+                            Ok(m) => m,
+                            Err(_) => return None,
+                        };
+                        old_date.checked_add_months(Months::new(num * 12))
+                    }
+                    // => old_date.checked_add_days(Days::new(num)),
+                    'd' | _ => old_date.checked_add_days(Days::new(num)),
+                };
+                let new_date = match new_date {
+                    Some(d) => d,
+                    None => return None,
+                };
+
+                let new_date_str = new_date.format_with_items(DATE_FORMAT_CONST).to_string();
+                Some((old_date_str.to_owned(), new_date_str))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+fn parse_rec(input: &str) -> Option<(bool, u64, char)> {
+    let (input, strict) = {
+        let strict = input.chars().next().unwrap() == '+';
+        if strict {
+            (input.get(1..).unwrap(), true)
+        } else {
+            (input, false)
+        }
+    };
+
+    let (input, duration) = {
+        let last = input.chars().last().unwrap_or('d');
+        if last.is_digit(10) {
+            (input, 'd')
+        } else {
+            (input.get(..input.len() - 1).unwrap(), last)
+        }
+    };
+
+    let num = match u64::from_str_radix(input, 10) {
+        Ok(t) => t,
+        Err(_) => return None,
+    };
+
+    return Some((strict, num, duration));
+}
+
 #[cfg(test)]
 mod test {
 
     use crate::tasks::{Task, PENDING_PREFIX};
-    use chrono::Local;
+    use chrono::{Days, Local, Months, NaiveDate};
 
-    use super::DATE_FORMAT_STR;
+    use super::DATE_FORMAT_CONST;
 
     #[test]
     fn simple_tasks() {
@@ -186,7 +287,7 @@ mod test {
         .collect();
 
         let local = Local::now();
-        let date = local.format_with_items(DATE_FORMAT_STR).to_string();
+        let date = local.format_with_items(DATE_FORMAT_CONST).to_string();
 
         let expected: Vec<String> = vec![
             &format!("x {date} 2024-08-14 task with start date"),
@@ -197,6 +298,114 @@ mod test {
         .iter_mut()
         .map(|m| m.to_string())
         .collect();
+        list.iter()
+            .zip(expected)
+            .for_each(|e| assert_eq!(*e.0, e.1));
+    }
+
+    #[test]
+    fn tasks_recurring() {
+        let today = Local::now().date_naive();
+        let today_str = today.format_with_items(DATE_FORMAT_CONST).to_string();
+        let due = today
+            .checked_add_days(Days::new(2))
+            .unwrap()
+            .format_with_items(DATE_FORMAT_CONST)
+            .to_string();
+
+        let list: Vec<(String, String)> = vec![
+            format!("recurrent task rec:10 due:{due}"),
+            format!("strict recurrent task rec:+10 due:{due}"),
+            format!("recurrent task with days rec:10d due:{due}"),
+            format!("strict recurrent task with days rec:+10d due:{due}"),
+            format!("recurrent task with months rec:2m due:{due}"),
+            format!("strict recurrent task with months rec:+2m due:{due}"),
+            format!("recurrent task with years rec:2y due:{due}"),
+            format!("strict recurrent task with years rec:+2y due:{due}"),
+            format!("2024-08-27 recurrent task with start dates rec:10 due:{due}"),
+            format!("2024-08-27 strict recurrent task with start dates rec:+10 due:{due}"),
+        ]
+        .iter()
+        .map(|t| Task::new(&t))
+        .map(|mut t1| {
+            let t2 = t1.toggle_done().unwrap().text.to_string();
+            (t1.text.to_string(), t2)
+        })
+        .collect();
+
+        fn get_date_string(date: Option<NaiveDate>) -> String {
+            date.unwrap()
+                .format_with_items(DATE_FORMAT_CONST)
+                .to_string()
+        }
+
+        let due_days = get_date_string(today.checked_add_days(Days::new(10)));
+        let due_days_strict = get_date_string(today.checked_add_days(Days::new(12)));
+        let due_m = get_date_string(today.checked_add_months(Months::new(2)));
+        let due_strict_m = get_date_string(
+            today
+                .checked_add_days(Days::new(2))
+                .unwrap()
+                .checked_add_months(Months::new(2)),
+        );
+        let due_y = get_date_string(today.checked_add_months(Months::new(12 * 2)));
+        let due_strict_y = get_date_string(
+            today
+                .checked_add_days(Days::new(2))
+                .unwrap()
+                .checked_add_months(Months::new(12 * 2)),
+        );
+
+        // the newly created task from that
+        let expected: Vec<(String, String)> = vec![
+            (
+                format!("x recurrent task rec:10 due:{due}"),
+                format!("{PENDING_PREFIX}recurrent task rec:10 due:{due_days}"),
+            ),
+            (
+                format!("x strict recurrent task rec:+10 due:{due}"),
+                format!("{PENDING_PREFIX}strict recurrent task rec:+10 due:{due_days_strict}"),
+            ),
+            (
+                format!("x recurrent task with days rec:10d due:{due}"),
+                format!("{PENDING_PREFIX}recurrent task with days rec:10d due:{due_days}"),
+            ),
+            (
+                format!("x strict recurrent task with days rec:+10d due:{due}"),
+                format!(
+                    "{PENDING_PREFIX}strict recurrent task with days rec:+10d due:{due_days_strict}"
+                ),
+            ),
+            (
+                format!("x recurrent task with months rec:2m due:{due}"),
+                format!("{PENDING_PREFIX}recurrent task with months rec:2m due:{due_m}"),
+            ),
+            (
+                format!("x strict recurrent task with months rec:+2m due:{due}"),
+                format!(
+                    "{PENDING_PREFIX}strict recurrent task with months rec:+2m due:{due_strict_m}"
+                ),
+            ),
+            (
+                format!("x recurrent task with years rec:2y due:{due}"),
+                format!("{PENDING_PREFIX}recurrent task with years rec:2y due:{due_y}"),
+            ),
+            (
+                format!("x strict recurrent task with years rec:+2y due:{due}"),
+                format!(
+                    "{PENDING_PREFIX}strict recurrent task with years rec:+2y due:{due_strict_y}"
+                ),
+            ),
+            (
+                format!("x 2024-08-27 {today_str} recurrent task with start dates rec:10 due:{due}"),
+                format!("{PENDING_PREFIX}2024-08-27 recurrent task with start dates rec:10 due:{due_days}"),
+            ),
+            (
+                format!("x 2024-08-27 {today_str} strict recurrent task with start dates rec:+10 due:{due}"),
+                format!("{PENDING_PREFIX}2024-08-27 strict recurrent task with start dates rec:+10 due:{due_days_strict}"),
+            ),
+        ];
+
         list.iter()
             .zip(expected)
             .for_each(|e| assert_eq!(*e.0, e.1));
