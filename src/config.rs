@@ -18,11 +18,17 @@ pub struct Config {
     pub text_color: Color,
     #[serde(with = "color_to_tui")]
     pub completed_text_color: Color,
+    #[serde(with = "color_to_tui")]
+    pub context_color: Color,
+    #[serde(with = "color_to_tui")]
+    pub project_color: Color,
 }
 
 const SELECTED_STYLE_FG: Color = tailwind::BLUE.c300;
 const TEXT_COLOR: Color = tailwind::SLATE.c200;
-const COMPLETED_TEXT_COLOR: Color = tailwind::GREEN.c500;
+const COMPLETED_TEXT_COLOR: Color = tailwind::GRAY.c500;
+const CONTEXT_COLOR: Color = tailwind::GREEN.c500;
+const PROJECT_COLOR: Color = tailwind::AMBER.c500;
 
 impl Default for Config {
     fn default() -> Self {
@@ -33,6 +39,8 @@ impl Default for Config {
             selected_text: SELECTED_STYLE_FG,
             text_color: TEXT_COLOR,
             completed_text_color: COMPLETED_TEXT_COLOR,
+            context_color: CONTEXT_COLOR,
+            project_color: PROJECT_COLOR,
         }
     }
 }

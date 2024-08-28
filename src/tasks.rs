@@ -10,13 +10,31 @@ pub const DATE_FORMAT_CONST: StrftimeItems<'_> = StrftimeItems::new(DATE_FORMAT_
 #[derive(Clone, Debug)]
 pub struct Task {
     pub text: String,
+    pub arr: Vec<TaskSection>,
     pub done: bool,
 }
+
+#[derive(Clone, Debug)]
+pub enum TaskStringTag {
+    Other,
+    Context,
+    Project,
+}
+
+impl ToString for Task {
+    fn to_string(&self) -> String {
+        self.arr.iter().map(|e| e.1.as_str()).collect()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaskSection(pub TaskStringTag, pub String);
 
 impl Task {
     pub fn new(text: &str) -> Self {
         let text = text.trim();
         let done = text.starts_with("x ");
+
         let text = if done {
             text.to_string()
         } else {
@@ -26,7 +44,9 @@ impl Task {
                 (PENDING_PREFIX.to_string() + text).to_string()
             }
         };
-        Self { done, text }
+
+        let arr = text_to_vec(&text);
+        Self { done, text, arr }
     }
 
     pub fn toggle_done(&mut self) -> Option<Task> {
@@ -55,7 +75,8 @@ impl Task {
                 "".to_string()
             };
             let rest = rest.trim();
-            self.text = format!("{PENDING_PREFIX}{pri_new}{date}{rest}").replace(&pri_old, "")
+            self.text = format!("{PENDING_PREFIX}{pri_new}{date}{rest}").replace(&pri_old, "");
+            self.arr = text_to_vec(&self.text);
         } else {
             self.done = true;
             let text = self.text.clone();
@@ -82,6 +103,7 @@ impl Task {
             let due_date = try_rec(rest);
 
             self.text = format!("{DONE_PREFIX}{date}{rest}{priority}");
+            self.arr = text_to_vec(&self.text);
             if let Some((old, new)) = due_date {
                 let text = text.replace(&old, &new);
                 return Some(Task::new(&text));
@@ -223,6 +245,69 @@ fn parse_rec(input: &str) -> Option<(bool, u64, char)> {
     };
 
     return Some((strict, num, duration));
+}
+enum ParseTaskState {
+    TryMatch,
+    Context,
+    Project,
+}
+
+fn text_to_vec(text: &str) -> Vec<TaskSection> {
+    let mut arr: Vec<TaskSection> = Vec::new();
+    let chars = text.chars().enumerate();
+    let mut state = ParseTaskState::TryMatch;
+    let mut start_index = 0;
+
+    for (idx, char) in chars {
+        match state {
+            ParseTaskState::TryMatch => {
+                if char == '@' || char == '+' {
+                    if idx == 0 {
+                        state = if char == '@' {
+                            ParseTaskState::Context
+                        } else {
+                            ParseTaskState::Project
+                        };
+                    } else if utf8_slice::slice(text, idx - 1, idx) == " " {
+                        state = if char == '@' {
+                            ParseTaskState::Context
+                        } else {
+                            ParseTaskState::Project
+                        };
+                        let section = utf8_slice::slice(text, start_index, idx).to_string();
+                        arr.push(TaskSection(TaskStringTag::Other, section));
+                        start_index = idx;
+                    }
+                }
+            }
+            ParseTaskState::Context => {
+                if char == ' ' {
+                    let section = utf8_slice::slice(text, start_index, idx).to_string();
+                    arr.push(TaskSection(TaskStringTag::Context, section));
+                    state = ParseTaskState::TryMatch;
+                    start_index = idx;
+                }
+            }
+            ParseTaskState::Project => {
+                if char == ' ' {
+                    let section = utf8_slice::slice(text, start_index, idx).to_string();
+                    arr.push(TaskSection(TaskStringTag::Project, section));
+                    state = ParseTaskState::TryMatch;
+                    start_index = idx;
+                }
+            }
+        }
+    }
+
+    let section = utf8_slice::from(text, start_index).to_string();
+    let tag = match state {
+        ParseTaskState::Context => TaskStringTag::Context,
+        ParseTaskState::Project => TaskStringTag::Project,
+        ParseTaskState::TryMatch => TaskStringTag::Other,
+    };
+    arr.push(TaskSection(tag, section));
+
+    arr
 }
 
 #[cfg(test)]
@@ -397,11 +482,11 @@ mod test {
                 ),
             ),
             (
-                format!("x 2024-08-27 {today_str} recurrent task with start dates rec:10 due:{due}"),
+                format!("x {today_str} 2024-08-27 recurrent task with start dates rec:10 due:{due}"),
                 format!("{PENDING_PREFIX}2024-08-27 recurrent task with start dates rec:10 due:{due_days}"),
             ),
             (
-                format!("x 2024-08-27 {today_str} strict recurrent task with start dates rec:+10 due:{due}"),
+                format!("x {today_str} 2024-08-27 strict recurrent task with start dates rec:+10 due:{due}"),
                 format!("{PENDING_PREFIX}2024-08-27 strict recurrent task with start dates rec:+10 due:{due_days_strict}"),
             ),
         ];

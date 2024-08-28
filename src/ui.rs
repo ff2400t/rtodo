@@ -7,7 +7,10 @@ use ratatui::{
 };
 use tui_input::Input;
 
-use crate::app::{AppState, Autocomplete, InputState, Model};
+use crate::{
+    app::{AppState, Autocomplete, InputState, Model},
+    tasks::TaskStringTag,
+};
 
 pub fn view(model: &mut Model, f: &mut Frame<'_>) {
     let outer_block = Block::new()
@@ -125,11 +128,19 @@ fn render_task_list(chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>, model: &mut
     let list_widget = List::new(
         list.iter()
             .map(|a| {
-                ListItem::new(a.text.as_str()).style(Style::new().set_style(if a.done {
-                    model.config.completed_text_color
-                } else {
-                    model.config.text_color
-                }))
+                ListItem::from(Line::from(
+                    a.arr
+                        .iter()
+                        .map(|a| {
+                            let color = match a.0 {
+                                TaskStringTag::Other => model.config.text_color,
+                                TaskStringTag::Context => model.config.context_color,
+                                TaskStringTag::Project => model.config.project_color,
+                            };
+                            Span::styled(a.1.as_str(), Style::new().set_style(color))
+                        })
+                        .collect::<Vec<Span>>(),
+                ))
             })
             .collect::<Vec<ListItem>>(),
     )

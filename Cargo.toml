@@ -12,3 +12,4 @@ ratatui = { version = "0.28.1", features = ["unstable-widget-ref"] }
 serde = { version = "1.0.207", features = ["derive"] }
 toml = "0.8.19"
 tui-input = "0.10.0"
+utf8_slice = "1.0.0"
