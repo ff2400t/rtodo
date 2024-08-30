@@ -1,3 +1,10 @@
-x done
-(A) Todo with pripority
-Task to do be done
+(A) task with priority
+done
+2024-08-14 task with start date
+(A) done task with priority
+task with @context and +project
+task with @context and +project
+x task
+x 2024-08-28 2024-08-14 task with priority and start date Pri:A
+x 2024-08-21 2024-08-14 done task with start date
+x 2024-08-21 2024-08-14 done task with priority and start date Pri:A
