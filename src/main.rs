@@ -12,17 +12,23 @@ mod ui;
 fn main() -> color_eyre::Result<()> {
     let config = config::get_config();
 
-    println!("{:?}", config);
-    let binding = match read_to_string(config.file_path.as_str()) {
+    let tasks_str = match read_to_string(config.file_path.as_str()) {
         Ok(str) => str,
         Err(_) => {
             println!("Failed to find the todo.txt file");
             return Ok(());
         }
     };
-    let tasks = binding.lines().collect();
-
-    let mut model = Model::new(tasks, config);
+    let tasks = tasks_str.lines().collect();
+    let saved_searches = if !config.searches_path.is_empty() {
+        match read_to_string(config.searches_path.as_str()) {
+            Ok(str) => str.lines().map(|a| a.to_string()).collect(),
+            Err(_) => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
+    let mut model = Model::new(tasks, config, saved_searches);
     errors::install_hooks()?;
     let mut terminal = tui::init()?;
     let save_file = run_app(&mut terminal, &mut model)?;

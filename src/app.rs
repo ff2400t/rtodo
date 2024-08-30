@@ -36,7 +36,6 @@ pub struct Model {
     pub first_done_index: usize,
     pub tasks: Vec<Task>,
     pub filtered_tasks: Vec<Task>,
-    pub search: SearchInput,
     pub app_state: AppState,
     pub input: Input,
     pub projects: HashSet<String>,
@@ -44,10 +43,12 @@ pub struct Model {
     pub auto_complete: Option<Autocomplete>,
     pub config: Config,
     pub save_file: bool,
+    pub search: SearchInput,
+    pub saved_searches: SavedSearches,
 }
 
 impl Model {
-    pub fn new(tasks: Vec<&str>, config: Config) -> Self {
+    pub fn new(tasks: Vec<&str>, config: Config, saved_searches: Vec<String>) -> Self {
         let mut projects = HashSet::new();
         let mut context = HashSet::new();
         tasks.iter().for_each(|t| {
@@ -107,6 +108,7 @@ impl Model {
             auto_complete: None,
             config,
             save_file: true,
+            saved_searches: SavedSearches::new(saved_searches),
         }
     }
 
@@ -242,6 +244,17 @@ impl Model {
             self.filter_tasks();
         }
     }
+
+    fn save_search(&mut self) {
+        let value = self.search.input.value();
+        self.saved_searches.list.push(value.to_string());
+
+        if !self.config.searches_path.is_empty() {
+            let content = self.saved_searches.list.join("\n");
+            let path = Path::new(self.config.searches_path.as_str());
+            let _ = write(path, content);
+        };
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -289,6 +302,9 @@ pub enum Message {
     AutoCompleteMove(KeyEvent),
     SaveFile,
     QuitWithoutSave,
+    SaveSearch,
+    OpenSavedSearchesView,
+    HandleSavedSearchKeys(KeyEvent),
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -303,6 +319,9 @@ fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
 fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
     match model.app_state {
         AppState::Running if model.search.active => Some(Message::SearchKeyInput(key_event)),
+        AppState::Running if model.saved_searches.show => {
+            Some(Message::HandleSavedSearchKeys(key_event))
+        }
         AppState::Running => match key_event.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Message::Prev),
             KeyCode::Down | KeyCode::Char('j') => Some(Message::Next),
@@ -314,6 +333,8 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('n') => Some(Message::OpenInput(InputState::NewTask)),
             KeyCode::Char('c') => Some(Message::OpenInput(InputState::CopyTask)),
             KeyCode::Char('s') => Some(Message::SaveFile),
+            KeyCode::Char('a') => Some(Message::SaveSearch),
+            KeyCode::Char('l') => Some(Message::OpenSavedSearchesView),
             KeyCode::Char('/') => Some(Message::OpenSearch),
             _ => None,
         },
@@ -575,6 +596,41 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             };
             None
         }
+        Message::SaveSearch => {
+            model.save_search();
+            None
+        }
+        Message::OpenSavedSearchesView => {
+            model.saved_searches.show = true;
+            model.saved_searches.list_state.select(Some(0));
+            None
+        }
+        Message::HandleSavedSearchKeys(key_event) => {
+            match key_event.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    model.saved_searches.list_state.select_previous()
+                }
+                KeyCode::Down | KeyCode::Char('j') => model.saved_searches.list_state.select_next(),
+                KeyCode::Enter => {
+                    if let Some(index) = model.saved_searches.list_state.selected() {
+                        if let Some(text) = model.saved_searches.list.get(index) {
+                            model.saved_searches.show = false;
+                            model.search.input = Input::new(text.clone());
+                            model.filter_tasks();
+                        }
+                    }
+                }
+                KeyCode::Esc => {
+                    model.saved_searches.show = false;
+                    model.save_search();
+                }
+                KeyCode::Delete => {
+                    model.saved_searches.show = false;
+                }
+                _ => {}
+            }
+            None
+        }
     }
 }
 
@@ -596,5 +652,22 @@ impl SearchInput {
 
     fn is_empty(&self) -> bool {
         self.input.value().is_empty()
+    }
+}
+
+#[derive(Debug)]
+pub struct SavedSearches {
+    pub list: Vec<String>,
+    pub show: bool,
+    pub list_state: ListState,
+}
+
+impl SavedSearches {
+    pub fn new(list: Vec<String>) -> Self {
+        Self {
+            list,
+            show: false,
+            list_state: ListState::default().with_selected(Some(0)),
+        }
     }
 }

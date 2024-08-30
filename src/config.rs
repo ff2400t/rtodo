@@ -22,6 +22,7 @@ pub struct Config {
     pub context_color: Color,
     #[serde(with = "color_to_tui")]
     pub project_color: Color,
+    pub searches_path: String,
 }
 
 const SELECTED_STYLE_FG: Color = tailwind::BLUE.c300;
@@ -34,6 +35,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             file_path: "".to_string(),
+            searches_path: "".to_string(),
             move_done_to_end: true,
             add_creation_date: true,
             selected_text: SELECTED_STYLE_FG,
@@ -50,9 +52,16 @@ pub fn get_config() -> Config {
         Some(path) => {
             let mut path = path.config_dir().to_path_buf();
             path.push("config.toml");
-            match read_to_string(path) {
+            match read_to_string(&path) {
                 Ok(string) => match toml::from_str::<Config>(&string) {
-                    Ok(res) => res,
+                    Ok(mut config) => {
+                        if config.searches_path.is_empty() {
+                            path.pop();
+                            path.push("searches.txt");
+                            config.searches_path = path.to_string_lossy().to_string();
+                        }
+                        config
+                    }
                     _ => Config::default(),
                 },
                 Err(_) => Config::default(),

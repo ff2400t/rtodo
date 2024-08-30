@@ -25,6 +25,7 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
 
     render_task_list(&chunks, f, model);
     render_statusline(f, &chunks);
+    render_saved_searches_list(model, &chunks, f);
     // Render this last so that Autocomplete rendering works:w:w
     render_search_input(model, &chunks, f);
 
@@ -51,6 +52,10 @@ fn render_statusline(f: &mut Frame<'_>, chunks: &std::rc::Rc<[Rect]>) {
         " /: Search ",
         space_2,
         " D: Delete ",
+        space_2,
+        " l: load Search",
+        space_2,
+        " a: Save Search",
     ];
 
     let line = options
@@ -180,6 +185,25 @@ fn render_autocomplete(
             f.render_widget(Clear, rect);
             f.render_stateful_widget(list_widget, rect, &mut auto_complete.list_state)
         }
+    }
+}
+
+fn render_saved_searches_list(model: &mut Model, chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>) {
+    if model.saved_searches.show {
+        let rect = centered_rect(50, 50, chunks[1]);
+        let list_block = Block::bordered();
+        let list = List::from(
+            model
+                .saved_searches
+                .list
+                .iter()
+                .map(|a| ListItem::from(Line::raw(a)))
+                .collect(),
+        )
+        .block(list_block)
+        .highlight_style(model.config.selected_text);
+        f.render_widget(Clear, rect);
+        f.render_stateful_widget(list, rect, &mut model.saved_searches.list_state)
     }
 }
 
