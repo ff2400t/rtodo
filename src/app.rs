@@ -17,7 +17,7 @@ const CONTEXT_PREFIX: &str = "@";
 
 pub fn run_app(terminal: &mut crate::tui::Tui, mut model: &mut Model) -> color_eyre::Result<bool> {
     model.list_state.select(Some(0));
-    while model.app_state != AppState::Done {
+    while model.live_state != LiveState::Done {
         terminal.draw(|f| crate::ui::view(&mut model, f))?;
 
         let mut current_msg = handle_events(model)?;
@@ -33,10 +33,11 @@ pub fn run_app(terminal: &mut crate::tui::Tui, mut model: &mut Model) -> color_e
 #[derive(Debug)]
 pub struct Model {
     pub list_state: ListState,
+    pub live_state: LiveState,
+    pub app_state: AppState,
     pub first_done_index: usize,
     pub tasks: Vec<Task>,
     pub filtered_tasks: Vec<Task>,
-    pub app_state: AppState,
     pub input: Input,
     pub projects: HashSet<String>,
     pub context: HashSet<String>,
@@ -96,12 +97,13 @@ impl Model {
         };
 
         Self {
+            live_state: LiveState::Running,
+            app_state: AppState::List,
             list_state: ListState::default(),
             tasks,
             first_done_index,
             filtered_tasks: Vec::new(),
             search: SearchInput::new(),
-            app_state: AppState::Running,
             input: Input::default(),
             projects,
             context,
@@ -257,11 +259,18 @@ impl Model {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum AppState {
+    Edit(InputState),
+    List,
+    SavedSearches,
+    SearchInput,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum LiveState {
     Running,
     Done,
-    Edit(InputState),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -318,11 +327,7 @@ fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
 
 fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
     match model.app_state {
-        AppState::Running if model.search.active => Some(Message::SearchKeyInput(key_event)),
-        AppState::Running if model.saved_searches.show => {
-            Some(Message::HandleSavedSearchKeys(key_event))
-        }
-        AppState::Running => match key_event.code {
+        AppState::List => match key_event.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Message::Prev),
             KeyCode::Down | KeyCode::Char('j') => Some(Message::Next),
             KeyCode::Char('q') => Some(Message::Quit),
@@ -342,14 +347,15 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Esc => Some(Message::DiscardEditor),
             _ => Some(Message::EditorKey(key_event)),
         },
-        AppState::Done => unreachable!(),
+        AppState::SavedSearches => Some(Message::HandleSavedSearchKeys(key_event)),
+        AppState::SearchInput => Some(Message::SearchKeyInput(key_event)),
     }
 }
 
 fn update(model: &mut Model, msg: Message) -> Option<Message> {
     match msg {
         Message::Quit => {
-            model.app_state = AppState::Done;
+            model.live_state = LiveState::Done;
             None
         }
         Message::Next => {
@@ -424,7 +430,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                     model.new_task();
                 }
             };
-            model.app_state = AppState::Running;
+            model.app_state = AppState::List;
             None
         }
         Message::EditorKey(event) => match event.code {
@@ -444,7 +450,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             }
         },
         Message::DiscardEditor => {
-            model.app_state = AppState::Running;
+            model.app_state = AppState::List;
             model.auto_complete = None;
             None
         }
@@ -453,10 +459,10 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::HandleAutoComplete => {
-            let (val, index) = if model.search.active {
-                (model.search.input.value(), model.search.input.cursor())
-            } else {
-                (model.input.value(), model.input.cursor())
+            let (val, index) = match model.app_state {
+                AppState::Edit(_) => (model.input.value(), model.input.cursor()),
+                AppState::SearchInput => (model.search.input.value(), model.search.input.cursor()),
+                _ => unreachable!(),
             };
             if index != 0 {
                 let before = val.get(..index).unwrap_or("");
@@ -506,12 +512,12 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         }
         Message::QuitWithoutSave => {
             model.save_file = false;
-            model.app_state = AppState::Done;
+            model.live_state = LiveState::Done;
             None
         }
         Message::OpenSearch => {
             model.search.prev_value = model.search.input.value().to_string();
-            model.search.active = true;
+            model.app_state = AppState::SearchInput;
             None
         }
         Message::SearchKeyInput(key_event) => match key_event.code {
@@ -519,12 +525,12 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 if model.auto_complete.is_some() {
                     Some(Message::AutoCompleteAppend)
                 } else {
-                    model.search.active = false;
+                    model.app_state = AppState::List;
                     None
                 }
             }
             KeyCode::Esc => {
-                model.search.active = false;
+                model.app_state = AppState::List;
                 if !model.search.prev_value.is_empty() {
                     model.search.input = Input::new(model.search.prev_value.clone());
                 }
@@ -541,10 +547,10 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             if let Some(ac) = model.auto_complete.as_ref() {
                 if let Some(index) = ac.list_state.selected() {
                     if let Some(selected) = ac.list.get(index) {
-                        let input = if model.search.active {
-                            &model.search.input
-                        } else {
-                            &model.input
+                        let input = match model.app_state {
+                            AppState::Edit(_) => &model.input,
+                            AppState::SearchInput => &model.search.input,
+                            _ => unreachable!(),
                         };
                         let cursor_index = input.cursor();
                         let (before, after) = input.value().split_at(cursor_index);
@@ -554,14 +560,14 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                         };
                         if let Some((before, _)) = before.rsplit_once(ac_prefix) {
                             let value = before.to_string() + ac_prefix + selected + after;
-                            if model.search.active {
-                                model.search.input = Input::new(value)
-                                    .with_cursor(before.len() + ac_prefix.len() + selected.len());
-                            } else {
-                                model.input = Input::new(value)
-                                    .with_cursor(before.len() + ac_prefix.len() + selected.len());
+                            let new_input = Input::new(value)
+                                .with_cursor(before.len() + ac_prefix.len() + selected.len());
+                            match model.app_state {
+                                AppState::Edit(_) => model.input = new_input,
+                                AppState::SearchInput => model.search.input = new_input,
+                                _ => unreachable!(),
                             };
-                        }
+                        };
                         model.auto_complete = None;
                     };
                 };
@@ -601,7 +607,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::OpenSavedSearchesView => {
-            model.saved_searches.show = true;
+            model.app_state = AppState::SavedSearches;
             model.saved_searches.list_state.select(Some(0));
             None
         }
@@ -614,18 +620,18 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 KeyCode::Enter => {
                     if let Some(index) = model.saved_searches.list_state.selected() {
                         if let Some(text) = model.saved_searches.list.get(index) {
-                            model.saved_searches.show = false;
+                            model.app_state = AppState::List;
                             model.search.input = Input::new(text.clone());
                             model.filter_tasks();
                         }
                     }
                 }
                 KeyCode::Esc => {
-                    model.saved_searches.show = false;
+                    model.app_state = AppState::List;
                     model.save_search();
                 }
                 KeyCode::Delete => {
-                    model.saved_searches.show = false;
+                    model.app_state = AppState::List;
                 }
                 _ => {}
             }
@@ -637,7 +643,6 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
 #[derive(Debug)]
 pub struct SearchInput {
     pub input: Input,
-    pub active: bool,
     pub prev_value: String,
 }
 
@@ -645,7 +650,6 @@ impl SearchInput {
     fn new() -> Self {
         Self {
             input: Input::default(),
-            active: false,
             prev_value: "".to_string(),
         }
     }
@@ -658,7 +662,6 @@ impl SearchInput {
 #[derive(Debug)]
 pub struct SavedSearches {
     pub list: Vec<String>,
-    pub show: bool,
     pub list_state: ListState,
 }
 
@@ -666,7 +669,6 @@ impl SavedSearches {
     pub fn new(list: Vec<String>) -> Self {
         Self {
             list,
-            show: false,
             list_state: ListState::default().with_selected(Some(0)),
         }
     }

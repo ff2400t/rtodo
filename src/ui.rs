@@ -5,7 +5,6 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph},
     Frame,
 };
-use tui_input::Input;
 
 use crate::{
     app::{AppState, Autocomplete, InputState, Model},
@@ -26,15 +25,16 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
     render_task_list(&chunks, f, model);
     render_statusline(f, &chunks);
     render_saved_searches_list(model, &chunks, f);
-    // Render this last so that Autocomplete rendering works:w:w
-    render_search_input(model, &chunks, f);
 
     match model.app_state {
-        AppState::Edit(ref input_state) => {
-            let (layout, cursor_x) = render_input(&chunks, &mut model.input, input_state, f);
-            render_autocomplete(&mut model.auto_complete, cursor_x, layout, false, f);
+        AppState::Edit(_) => {
+            render_input(&chunks, model, f);
+            render_static_search_input(model, f, chunks[0])
         }
-        _ => (),
+        // Render this last so that Autocomplete rendering works:w:w
+        AppState::SearchInput => render_active_search_input(model, f, chunks[0]),
+
+        _ => render_static_search_input(model, f, chunks[0]),
     };
 }
 
@@ -71,42 +71,39 @@ fn render_statusline(f: &mut Frame<'_>, chunks: &std::rc::Rc<[Rect]>) {
     f.render_widget(Line::from(line), chunks[2]);
 }
 
-fn render_search_input(model: &mut Model, chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>) {
-    let layout = chunks[0];
-    if model.search.active {
-        let input_widget = Paragraph::new(model.search.input.value()).block(Block::new());
-        f.render_widget(input_widget, layout);
-        let cursor_x = layout.x + model.search.input.visual_cursor() as u16;
-        //     // Move one line down, from the border to the input line
-        f.set_cursor_position(Position::new(cursor_x, layout.y));
-        render_autocomplete(&mut model.auto_complete, cursor_x, layout, true, f);
+fn render_static_search_input(model: &mut Model, f: &mut Frame<'_>, layout: Rect) {
+    let text = if model.search.input.value().is_empty() {
+        "No search is active at the moment"
     } else {
-        let text = if model.search.input.value().is_empty() {
-            "No search is active at the moment"
-        } else {
-            model.search.input.value()
-        };
-        let input_widget = Paragraph::new(text)
-            .style(Style::default().gray())
-            .block(Block::new());
-        f.render_widget(input_widget, layout);
-    }
+        model.search.input.value()
+    };
+    let input_widget = Paragraph::new(text)
+        .style(Style::default().gray())
+        .block(Block::new());
+    f.render_widget(input_widget, layout);
 }
 
-fn render_input(
-    chunks: &std::rc::Rc<[Rect]>,
-    input: &mut Input,
-    input_state: &InputState,
-    f: &mut Frame<'_>,
-) -> (Rect, u16) {
+fn render_active_search_input(model: &mut Model, f: &mut Frame<'_>, layout: Rect) {
+    let input_widget = Paragraph::new(model.search.input.value()).block(Block::new());
+    f.render_widget(input_widget, layout);
+    let cursor_x = layout.x + model.search.input.visual_cursor() as u16;
+    //     // Move one line down, from the border to the input line
+    f.set_cursor_position(Position::new(cursor_x, layout.y));
+    render_autocomplete(&mut model.auto_complete, cursor_x, layout, true, f);
+}
+
+fn render_input(chunks: &std::rc::Rc<[Rect]>, model: &mut Model, f: &mut Frame<'_>) {
     let layout = centered_rect(50, 30, chunks[1]);
     let width = layout.width.max(3) - 3;
-    let scroll = input.visual_scroll(width as usize);
-    let title = match input_state {
-        InputState::Edit => "Edit Task",
-        InputState::NewTask | InputState::CopyTask => "New Task",
+    let scroll = model.input.visual_scroll(width as usize);
+    let title = match model.app_state {
+        AppState::Edit(ref state) => match state {
+            InputState::Edit => "Edit Task",
+            InputState::NewTask | InputState::CopyTask => "New Task",
+        },
+        _ => unreachable!(),
     };
-    let input_widget = Paragraph::new(input.value())
+    let input_widget = Paragraph::new(model.input.value())
         .scroll((0, scroll as u16))
         .block(
             Block::default()
@@ -116,11 +113,11 @@ fn render_input(
         );
     f.render_widget(input_widget, layout);
     //     // Put cursor past the end of the input text
-    let cursor_x = layout.x + ((input.visual_cursor()).max(scroll) - scroll) as u16 + 1;
+    let cursor_x = layout.x + ((model.input.visual_cursor()).max(scroll) - scroll) as u16 + 1;
     //     // Move one line down, from the border to the input line
     let cursor_y = layout.y + 1;
     f.set_cursor_position(Position::new(cursor_x, cursor_y));
-    (layout, cursor_x)
+    render_autocomplete(&mut model.auto_complete, cursor_x, layout, false, f);
 }
 
 fn render_task_list(chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>, model: &mut Model) {
@@ -189,21 +186,24 @@ fn render_autocomplete(
 }
 
 fn render_saved_searches_list(model: &mut Model, chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>) {
-    if model.saved_searches.show {
-        let rect = centered_rect(50, 50, chunks[1]);
-        let list_block = Block::bordered();
-        let list = List::from(
-            model
-                .saved_searches
-                .list
-                .iter()
-                .map(|a| ListItem::from(Line::raw(a)))
-                .collect(),
-        )
-        .block(list_block)
-        .highlight_style(model.config.selected_text);
-        f.render_widget(Clear, rect);
-        f.render_stateful_widget(list, rect, &mut model.saved_searches.list_state)
+    match model.app_state {
+        AppState::SavedSearches => {
+            let rect = centered_rect(50, 50, chunks[1]);
+            let list_block = Block::bordered();
+            let list = List::from(
+                model
+                    .saved_searches
+                    .list
+                    .iter()
+                    .map(|a| ListItem::from(Line::raw(a)))
+                    .collect(),
+            )
+            .block(list_block)
+            .highlight_style(model.config.selected_text);
+            f.render_widget(Clear, rect);
+            f.render_stateful_widget(list, rect, &mut model.saved_searches.list_state)
+        }
+        _ => (),
     }
 }
 
