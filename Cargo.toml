@@ -8,6 +8,7 @@ chrono = "0.4.38"
 color-eyre = "0.6.3"
 color-to-tui = "0.3.0"
 directories = "5.0.1"
+lexopt = "0.3.0"
 ratatui = { version = "0.28.1", features = ["unstable-widget-ref"] }
 serde = { version = "1.0.207", features = ["derive"] }
 toml = "0.8.19"

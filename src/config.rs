@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::{
     env,
     fs::{self, read_to_string},
+    path::PathBuf,
 };
 
 #[derive(Debug, Deserialize)]
@@ -65,19 +66,29 @@ pub fn get_config() -> Config {
                     _ => Config::default(),
                 },
                 Err(_) => Config::default(),
-                // read this dir and the get the file location = dir.push("config.toml")
             }
         }
         None => Config::default(),
     };
 
-    let args = std::env::args();
-    let argument = args.skip(1).next();
-    if let Some(arg) = argument {
-        if let Ok(path) = fs::canonicalize(arg) {
-            config.file_path = path.to_string_lossy().to_string()
-        }
-    }
+    if let Ok(args) = parse_args() {
+        println!("{:?}", args);
+        if let Some(path) = args.config {
+            if let Ok(config_path) = fs::canonicalize(path) {
+                if let Ok(string) = read_to_string(&config_path) {
+                    if let Ok(mut config_arg) = toml::from_str::<Config>(&string) {
+                        config_arg.searches_path = config.searches_path;
+                        config = config_arg;
+                    };
+                };
+            }
+        };
+        if let Some(file_path) = args.file {
+            if let Ok(path) = fs::canonicalize(file_path) {
+                config.file_path = path.to_string_lossy().to_string()
+            }
+        };
+    };
 
     if config.file_path == "" {
         let mut pwd = env::current_dir().expect("Failed to find the Present working directory");
@@ -87,4 +98,35 @@ pub fn get_config() -> Config {
     }
 
     config
+}
+
+#[derive(Debug)]
+struct Args {
+    file: Option<String>,
+    config: Option<String>,
+}
+
+fn parse_args() -> Result<Args, lexopt::Error> {
+    use lexopt::prelude::*;
+
+    let mut file = None;
+    let mut config = None;
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Short('c') | Long("config") => {
+                config = Some(parser.value()?.string()?);
+            }
+            Value(val) => {
+                file = Some(val.string()?);
+            }
+            Long("help") => {
+                println!("Usage: rtodo [-c|--config=config-file-path] [todo.txt]");
+                std::process::exit(0);
+            }
+            _ => return Err(arg.unexpected()),
+        }
+    }
+
+    Ok(Args { file, config })
 }
