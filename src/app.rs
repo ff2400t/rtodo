@@ -220,14 +220,37 @@ impl Model {
     }
 
     fn filter_tasks(&mut self) {
+        enum FilterKind {
+            Positive,
+            Negative,
+        }
         let value = self.search.input.value();
         if value.is_empty() {
             self.filtered_tasks = Vec::new();
         } else {
+            let values: Vec<(FilterKind, &str)> = value
+                .split(",")
+                .map(|e| {
+                    if e.starts_with("-") {
+                        (FilterKind::Negative, e.strip_prefix('-').unwrap())
+                    } else {
+                        (FilterKind::Positive, e.trim())
+                    }
+                })
+                .collect();
+
             self.filtered_tasks = self
                 .tasks
                 .iter()
-                .filter(|t| t.text.contains(value))
+                .filter(|t| {
+                    values.iter().all(|(kind, string)| {
+                        let res = t.text.contains(*string);
+                        match kind {
+                            FilterKind::Positive => res,
+                            FilterKind::Negative => !res,
+                        }
+                    })
+                })
                 .map(|a| a.clone())
                 .collect();
         }
