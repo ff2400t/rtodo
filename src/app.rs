@@ -154,10 +154,12 @@ impl Model {
 
     pub fn new_task(&mut self) {
         let value = self.input.value();
-        let task = Task::new(value);
-        self.tasks.push(task);
-        self.add_to_sets(&value.to_string());
-        self.move_done_tasks(self.tasks.len() - 1);
+        if !value.trim().is_empty() {
+            let task = Task::new(value);
+            self.tasks.push(task);
+            self.add_to_sets(&value.to_string());
+            self.move_done_tasks(self.tasks.len() - 1);
+        }
     }
 
     fn update_task(&mut self, only_toggle: bool) {
@@ -449,6 +451,10 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 }
             }
             KeyCode::Tab => Some(Message::AutoCompleteMove(event)),
+            KeyCode::Char('c') if event.modifiers.contains(KeyModifiers::CONTROL) => {
+                model.input = Input::default();
+                None
+            }
             _ => {
                 model.input.handle_event(&Event::Key(event));
                 Some(Message::HandleAutoComplete)
@@ -542,6 +548,12 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 None
             }
             KeyCode::Tab => Some(Message::AutoCompleteMove(key_event)),
+            KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                let value = model.search.input.value();
+                model.search.prev_value = value.to_string();
+                model.search.input = Input::default();
+                None
+            }
             _ => {
                 model.search.input.handle_event(&Event::Key(key_event));
                 model.filter_tasks();
