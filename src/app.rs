@@ -314,13 +314,18 @@ pub enum Message {
     SaveSearch,
     OpenSavedSearchesView,
     HandleSavedSearchKeys(KeyEvent),
+    HandlePaste(String),
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
-    if let Event::Key(key) = event::read()? {
-        if key.kind == event::KeyEventKind::Press {
-            return Ok(handle_key(&model, key));
+    match event::read()? {
+        Event::Key(key) => {
+            if key.kind == event::KeyEventKind::Press {
+                return Ok(handle_key(&model, key));
+            }
         }
+        Event::Paste(text) => return Ok(handle_paste(model, text)),
+        _ => (),
     }
     Ok(None)
 }
@@ -637,6 +642,33 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             }
             None
         }
+        Message::HandlePaste(text) => {
+            let input = match model.app_state {
+                AppState::Edit(_) => &model.input,
+                AppState::SearchInput => &model.search.input,
+                _ => {
+                    return None;
+                }
+            };
+            let cursor = input.cursor();
+            let (before, after) = input.value().split_at(cursor);
+            let new = before.to_string() + &text + after;
+            let new_cursor = cursor + text.len();
+            let new_input = Input::default().with_value(new).with_cursor(new_cursor);
+            match model.app_state {
+                AppState::Edit(_) => model.input = new_input,
+                AppState::SearchInput => model.search.input = new_input,
+                _ => return None,
+            };
+            None
+        }
+    }
+}
+
+fn handle_paste(model: &Model, text: String) -> Option<Message> {
+    match model.app_state {
+        AppState::SearchInput => Some(Message::HandlePaste(text)),
+        _ => None,
     }
 }
 
