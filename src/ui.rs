@@ -160,13 +160,14 @@ fn render_autocomplete(
     f: &mut Frame<'_>,
 ) {
     if let Some(auto_complete) = auto_complete {
-        if auto_complete.list.len() > 0 {
+        if !auto_complete.list.is_empty() {
             let block = Block::new().borders(Borders::NONE);
             let list_widget = List::new(
                 auto_complete
                     .list
                     .iter()
-                    .map(|a| ListItem::new(a.clone()))
+                    .cloned()
+                    .map(ListItem::new)
                     .collect::<Vec<ListItem>>(),
             )
             .highlight_style(Style::default().white().on_black())
@@ -186,24 +187,19 @@ fn render_autocomplete(
 }
 
 fn render_saved_searches_list(model: &mut Model, chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>) {
-    match model.app_state {
-        AppState::SavedSearches => {
-            let rect = centered_rect(50, 50, chunks[1]);
-            let list_block = Block::bordered();
-            let list = List::from(
-                model
-                    .saved_searches
-                    .list
-                    .iter()
-                    .map(|a| ListItem::from(Line::raw(a)))
-                    .collect(),
-            )
+    if let AppState::SavedSearches = model.app_state {
+        let rect = centered_rect(50, 50, chunks[1]);
+        let list_block = Block::bordered();
+        let list = model
+            .saved_searches
+            .list
+            .iter()
+            .map(|a| ListItem::from(Line::raw(a)))
+            .collect::<List>()
             .block(list_block)
             .highlight_style(model.config.selected_text);
-            f.render_widget(Clear, rect);
-            f.render_stateful_widget(list, rect, &mut model.saved_searches.list_state)
-        }
-        _ => (),
+        f.render_widget(Clear, rect);
+        f.render_stateful_widget(list, rect, &mut model.saved_searches.list_state)
     }
 }
 

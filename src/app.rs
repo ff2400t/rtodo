@@ -15,15 +15,15 @@ const PENDING_PREFIX: &str = "☐ ";
 const PROJECT_PREFIX: &str = "+";
 const CONTEXT_PREFIX: &str = "@";
 
-pub fn run_app(terminal: &mut crate::tui::Tui, mut model: &mut Model) -> color_eyre::Result<bool> {
+pub fn run_app(terminal: &mut crate::tui::Tui, model: &mut Model) -> color_eyre::Result<bool> {
     model.list_state.select(Some(0));
     while model.live_state != LiveState::Done {
-        terminal.draw(|f| crate::ui::view(&mut model, f))?;
+        terminal.draw(|f| crate::ui::view(model, f))?;
 
         let mut current_msg = handle_events(model)?;
 
         while current_msg.is_some() {
-            current_msg = update(&mut model, current_msg.unwrap());
+            current_msg = update(model, current_msg.unwrap());
         }
     }
 
@@ -60,8 +60,6 @@ impl Model {
                 } else if t.starts_with(CONTEXT_PREFIX) {
                     let val = t.strip_prefix(CONTEXT_PREFIX).unwrap();
                     context.insert(val.to_string());
-                } else {
-                    ();
                 }
             })
         });
@@ -169,11 +167,10 @@ impl Model {
                 index
             } else {
                 let text = &self.filtered_tasks[index].text;
-                if let Some(index) = self.tasks.iter().position(|t| t.text == *text) {
-                    index
-                } else {
-                    0
-                }
+                self.tasks
+                    .iter()
+                    .position(|t| t.text == *text)
+                    .unwrap_or_default()
             }
         } else {
             0
@@ -251,7 +248,7 @@ impl Model {
                         }
                     })
                 })
-                .map(|a| a.clone())
+                .cloned()
                 .collect();
         }
     }
@@ -346,7 +343,7 @@ fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
     match event::read()? {
         Event::Key(key) => {
             if key.kind == event::KeyEventKind::Press {
-                return Ok(handle_key(&model, key));
+                return Ok(handle_key(model, key));
             }
         }
         Event::Paste(text) => return Ok(handle_paste(model, text)),
@@ -509,9 +506,9 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                             .projects
                             .iter()
                             .filter(|s| s.contains(match_word))
-                            .map(|s| s.clone())
+                            .cloned()
                             .collect::<Vec<String>>();
-                        if suggestions.len() > 0 {
+                        if !suggestions.is_empty() {
                             model.auto_complete = Some(Autocomplete {
                                 kind: AutoCompleteKind::Project,
                                 list: suggestions,
@@ -524,9 +521,9 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                             .context
                             .iter()
                             .filter(|s| s.contains(match_word))
-                            .map(|s| s.clone())
+                            .cloned()
                             .collect::<Vec<String>>();
-                        if suggestions.len() > 0 {
+                        if !suggestions.is_empty() {
                             model.auto_complete = Some(Autocomplete {
                                 kind: AutoCompleteKind::Context,
                                 list: suggestions,
@@ -629,12 +626,10 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                             .unwrap()
                             .list_state
                             .select_previous();
+                    } else if selected == ac.list.len() {
+                        ac.list_state.select(Some(0))
                     } else {
-                        if selected == ac.list.len() {
-                            ac.list_state.select(Some(0))
-                        } else {
-                            ac.list_state.select_next()
-                        }
+                        ac.list_state.select_next()
                     }
                 } else {
                     ac.list_state.select(Some(0))

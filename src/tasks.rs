@@ -21,12 +21,6 @@ pub enum TaskStringTag {
     Project,
 }
 
-impl ToString for Task {
-    fn to_string(&self) -> String {
-        self.arr.iter().map(|e| e.1.as_str()).collect()
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct TaskSection(pub TaskStringTag, pub String);
 
@@ -35,14 +29,10 @@ impl Task {
         let text = text.trim();
         let done = text.starts_with("x ");
 
-        let text = if done {
+        let text = if done || text.starts_with(PENDING_PREFIX) {
             text.to_string()
         } else {
-            if text.starts_with(PENDING_PREFIX) {
-                text.to_string()
-            } else {
-                (PENDING_PREFIX.to_string() + text).to_string()
-            }
+            (PENDING_PREFIX.to_string() + text).to_string()
         };
 
         let arr = text_to_vec(&text);
@@ -69,7 +59,7 @@ impl Task {
             let rest = text.get(2..).unwrap();
             let (rest, completion_date) = get_date(rest.trim_start());
             let (rest, start_date) = get_date(rest.trim_start());
-            let date = if completion_date != "" && start_date != "" {
+            let date = if completion_date.is_empty() && start_date.is_empty() {
                 start_date.to_string() + " "
             } else {
                 "".to_string()
@@ -117,17 +107,17 @@ fn get_priority(input: &str) -> (&str, &str) {
     let input = input.trim_start();
     let word = input.get(..3).unwrap_or("");
     if word.starts_with("(") && word.ends_with(")") {
-        if let Some(pri) = word.get(1..2).clone() {
+        if let Some(pri) = word.get(1..2) {
             if pri == pri.to_uppercase() {
-                return (input.get(3..).unwrap_or(""), &pri);
+                (input.get(3..).unwrap_or(""), pri)
             } else {
-                return (input, "");
+                (input, "")
             }
         } else {
-            return (input, "");
+            (input, "")
         }
     } else {
-        return (input, "");
+        (input, "")
     }
 }
 
@@ -136,25 +126,23 @@ fn get_date(input: &str) -> (&str, &str) {
     match input.get(..10) {
         Some(date) => {
             let chars: Vec<char> = date.chars().collect();
-            if chars[0].is_digit(10)
-                && chars[1].is_digit(10)
-                && chars[2].is_digit(10)
-                && chars[3].is_digit(10)
+            if chars[0].is_ascii_digit()
+                && chars[1].is_ascii_digit()
+                && chars[2].is_ascii_digit()
+                && chars[3].is_ascii_digit()
                 && chars[4] == '-'
-                && chars[5].is_digit(10)
-                && chars[6].is_digit(10)
+                && chars[5].is_ascii_digit()
+                && chars[6].is_ascii_digit()
                 && chars[7] == '-'
-                && chars[8].is_digit(10)
-                && chars[9].is_digit(10)
+                && chars[8].is_ascii_digit()
+                && chars[9].is_ascii_digit()
             {
-                return (input.get(10..).unwrap_or(""), date);
+                (input.get(10..).unwrap_or(""), date)
             } else {
-                return def;
+                def
             }
         }
-        None => {
-            return def;
-        }
+        None => def,
     }
 }
 
@@ -200,7 +188,7 @@ fn try_rec(input: &str) -> Option<(String, String)> {
                         old_date.checked_add_months(Months::new(num * 12))
                     }
                     // => old_date.checked_add_days(Days::new(num)),
-                    'd' | _ => old_date.checked_add_days(Days::new(num)),
+                    _ => old_date.checked_add_days(Days::new(num)),
                 };
                 let new_date = match new_date {
                     Some(d) => d,
@@ -222,8 +210,7 @@ fn try_rec(input: &str) -> Option<(String, String)> {
 
 fn parse_rec(input: &str) -> Option<(bool, u64, char)> {
     let (input, strict) = {
-        let strict = input.chars().next().unwrap() == '+';
-        if strict {
+        if input.starts_with("+") {
             (input.get(1..).unwrap(), true)
         } else {
             (input, false)
@@ -232,19 +219,19 @@ fn parse_rec(input: &str) -> Option<(bool, u64, char)> {
 
     let (input, duration) = {
         let last = input.chars().last().unwrap_or('d');
-        if last.is_digit(10) {
+        if last.is_ascii_digit() {
             (input, 'd')
         } else {
             (input.get(..input.len() - 1).unwrap(), last)
         }
     };
 
-    let num = match u64::from_str_radix(input, 10) {
+    let num = match input.parse() {
         Ok(t) => t,
         Err(_) => return None,
     };
 
-    return Some((strict, num, duration));
+    Some((strict, num, duration))
 }
 enum ParseTaskState {
     TryMatch,

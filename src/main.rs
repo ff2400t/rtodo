@@ -36,11 +36,8 @@ fn main() -> color_eyre::Result<()> {
     tui::restore()?;
 
     // this needs to matched after restoring the terminal checked so that the line is printed to the console
-    if save_file {
-        match model.write() {
-            Err(_) => println!("There was an error in saving the todo.txt file"),
-            _ => (),
-        }
+    if save_file && model.write().is_err() {
+        println!("There was an error in saving the todo.txt file")
     }
 
     Ok(())

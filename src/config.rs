@@ -4,7 +4,6 @@ use serde::Deserialize;
 use std::{
     env,
     fs::{self, read_to_string},
-    path::PathBuf,
 };
 
 #[derive(Debug, Deserialize)]
@@ -90,7 +89,7 @@ pub fn get_config() -> Config {
         };
     };
 
-    if config.file_path == "" {
+    if config.file_path.is_empty() {
         let mut pwd = env::current_dir().expect("Failed to find the Present working directory");
         pwd.push("todo.txt");
         let file_name = pwd.as_path();
