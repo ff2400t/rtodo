@@ -18,6 +18,7 @@ pub struct Task {
 pub enum TaskStringTag {
     Other,
     Context,
+    Priority,
     Project,
 }
 
@@ -240,8 +241,19 @@ enum ParseTaskState {
 }
 
 fn text_to_vec(text: &str) -> Vec<TaskSection> {
-    let mut arr: Vec<TaskSection> = Vec::new();
-    let chars = text.chars().enumerate();
+    let prefix = if text.starts_with(PENDING_PREFIX) {
+        PENDING_PREFIX
+    } else {
+        DONE_PREFIX
+    };
+    let mut arr: Vec<TaskSection> = vec![TaskSection(TaskStringTag::Other, prefix.to_string())];
+    let text = text.strip_prefix(prefix).unwrap();
+    let (rest, pri) = get_priority(text);
+    if !pri.is_empty() {
+        arr.push(TaskSection(TaskStringTag::Priority, format!("({pri})")))
+    }
+
+    let chars = rest.chars().enumerate();
     let mut state = ParseTaskState::TryMatch;
     let mut start_index = 0;
 
@@ -255,13 +267,13 @@ fn text_to_vec(text: &str) -> Vec<TaskSection> {
                         } else {
                             ParseTaskState::Project
                         };
-                    } else if utf8_slice::slice(text, idx - 1, idx) == " " {
+                    } else if utf8_slice::slice(rest, idx - 1, idx) == " " {
                         state = if char == '@' {
                             ParseTaskState::Context
                         } else {
                             ParseTaskState::Project
                         };
-                        let section = utf8_slice::slice(text, start_index, idx).to_string();
+                        let section = utf8_slice::slice(rest, start_index, idx).to_string();
                         arr.push(TaskSection(TaskStringTag::Other, section));
                         start_index = idx;
                     }
@@ -269,7 +281,7 @@ fn text_to_vec(text: &str) -> Vec<TaskSection> {
             }
             ParseTaskState::Context => {
                 if char == ' ' {
-                    let section = utf8_slice::slice(text, start_index, idx).to_string();
+                    let section = utf8_slice::slice(rest, start_index, idx).to_string();
                     arr.push(TaskSection(TaskStringTag::Context, section));
                     state = ParseTaskState::TryMatch;
                     start_index = idx;
@@ -277,7 +289,7 @@ fn text_to_vec(text: &str) -> Vec<TaskSection> {
             }
             ParseTaskState::Project => {
                 if char == ' ' {
-                    let section = utf8_slice::slice(text, start_index, idx).to_string();
+                    let section = utf8_slice::slice(rest, start_index, idx).to_string();
                     arr.push(TaskSection(TaskStringTag::Project, section));
                     state = ParseTaskState::TryMatch;
                     start_index = idx;
@@ -286,12 +298,18 @@ fn text_to_vec(text: &str) -> Vec<TaskSection> {
         }
     }
 
-    let section = utf8_slice::from(text, start_index).to_string();
+    let section = utf8_slice::from(rest, start_index).to_string();
     let tag = match state {
         ParseTaskState::Context => TaskStringTag::Context,
         ParseTaskState::Project => TaskStringTag::Project,
         ParseTaskState::TryMatch => TaskStringTag::Other,
     };
+
+    //     if let Some(section) = get_priority(arr.get(0).) {
+
+    // }
+
+    //     let arr = if get_priority(arr[0])
     arr.push(TaskSection(tag, section));
 
     arr
