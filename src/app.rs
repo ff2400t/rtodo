@@ -46,6 +46,7 @@ pub struct Model {
     pub save_file: bool,
     pub search: SearchInput,
     pub saved_searches: SavedSearches,
+    pub report: String,
 }
 
 impl Model {
@@ -109,6 +110,7 @@ impl Model {
             config,
             save_file: true,
             saved_searches: SavedSearches::new(saved_searches),
+            report: String::from(""),
         }
     }
 
@@ -279,6 +281,24 @@ impl Model {
             let _ = write(path, content);
         };
     }
+
+    fn gen_report(&mut self) -> String {
+        let list = if self.search.is_empty() {
+            &self.tasks
+        } else {
+            &self.filtered_tasks
+        };
+        let completed = list.iter().filter(|t| t.done).count();
+        let total = list.len();
+        let todo = total - completed;
+        [
+            format!("Total tasks:      {total:>5}"),
+            format!("Completed Task:   {completed:>5}"),
+            format!("Task to do:       {todo:>5}"),
+        ]
+        .join("\n")
+        .to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -287,6 +307,7 @@ pub enum AppState {
     List,
     SavedSearches,
     SearchInput,
+    Report,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -337,6 +358,7 @@ pub enum Message {
     OpenSavedSearchesView,
     HandleSavedSearchKeys(KeyEvent),
     HandlePaste(String),
+    ToggleReport,
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -368,6 +390,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('a') => Some(Message::SaveSearch),
             KeyCode::Char('l') => Some(Message::OpenSavedSearchesView),
             KeyCode::Char('/') => Some(Message::OpenSearch),
+            KeyCode::Char('r') => Some(Message::ToggleReport),
             _ => None,
         },
         AppState::Edit(_) => match key_event.code {
@@ -376,6 +399,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
         },
         AppState::SavedSearches => Some(Message::HandleSavedSearchKeys(key_event)),
         AppState::SearchInput => Some(Message::SearchKeyInput(key_event)),
+        AppState::Report => Some(Message::ToggleReport),
     }
 }
 
@@ -689,6 +713,16 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 AppState::Edit(_) => model.input = new_input,
                 AppState::SearchInput => model.search.input = new_input,
                 _ => return None,
+            };
+            None
+        }
+        Message::ToggleReport => {
+            if let AppState::Report = model.app_state {
+                model.app_state = AppState::List;
+                model.report = "".to_string();
+            } else {
+                model.app_state = AppState::Report;
+                model.report = model.gen_report();
             };
             None
         }

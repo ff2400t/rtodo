@@ -12,9 +12,7 @@ use crate::{
 };
 
 pub fn view(model: &mut Model, f: &mut Frame<'_>) {
-    let outer_block = Block::new()
-        .title_alignment(ratatui::layout::Alignment::Center)
-        .padding(Padding::uniform(1));
+    let outer_block = Block::new().padding(Padding::uniform(1));
 
     let inner_block = outer_block.inner(f.area());
 
@@ -34,6 +32,17 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
         // Render this last so that Autocomplete rendering works:w:w
         AppState::SearchInput => render_active_search_input(model, f, chunks[0]),
 
+        AppState::Report => {
+            render_static_search_input(model, f, chunks[0]);
+            let rect = centered_rect(50, 30, chunks[1]);
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .title_top("Report")
+                .title_alignment(ratatui::layout::Alignment::Center);
+            let para = Paragraph::new(model.report.clone()).block(block);
+            f.render_widget(Clear, rect);
+            f.render_widget(para, rect);
+        }
         _ => render_static_search_input(model, f, chunks[0]),
     };
 }
@@ -56,6 +65,8 @@ fn render_statusline(f: &mut Frame<'_>, chunks: &std::rc::Rc<[Rect]>) {
         " l: load Search",
         space_2,
         " a: Save Search",
+        space_2,
+        " r: Report",
     ];
 
     let line = options
