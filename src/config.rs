@@ -12,19 +12,38 @@ pub struct Config {
     pub file_path: String,
     pub add_creation_date: bool,
     pub move_done_to_end: bool,
-    #[serde(with = "color_to_tui")]
-    pub selected_text: Color,
-    #[serde(with = "color_to_tui")]
-    pub text_color: Color,
-    #[serde(with = "color_to_tui")]
-    pub completed_text_color: Color,
-    #[serde(with = "color_to_tui")]
-    pub context_color: Color,
-    #[serde(with = "color_to_tui")]
-    pub project_color: Color,
-    #[serde(with = "color_to_tui")]
-    pub priority_color: Color,
     pub searches_path: String,
+    pub theme: Theme,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct Theme {
+    #[serde(with = "color_to_tui")]
+    pub completed_text: Color,
+    #[serde(with = "color_to_tui")]
+    pub context: Color,
+    #[serde(with = "color_to_tui")]
+    pub priority: Color,
+    #[serde(with = "color_to_tui")]
+    pub project: Color,
+    #[serde(with = "color_to_tui")]
+    pub selected: Color,
+    #[serde(with = "color_to_tui")]
+    pub text: Color,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Theme {
+            selected: tailwind::BLUE.c300,
+            text: tailwind::SLATE.c200,
+            completed_text: tailwind::GRAY.c500,
+            context: tailwind::GREEN.c500,
+            project: tailwind::AMBER.c500,
+            priority: tailwind::EMERALD.c500,
+        }
+    }
 }
 
 impl Default for Config {
@@ -34,12 +53,7 @@ impl Default for Config {
             searches_path: "".to_string(),
             move_done_to_end: true,
             add_creation_date: true,
-            selected_text: tailwind::BLUE.c300,
-            text_color: tailwind::SLATE.c200,
-            completed_text_color: tailwind::GRAY.c500,
-            context_color: tailwind::GREEN.c500,
-            project_color: tailwind::AMBER.c500,
-            priority_color: tailwind::EMERALD.c500,
+            theme: Theme::default(),
         }
     }
 }

@@ -135,10 +135,10 @@ fn render_task_list(chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>, model: &mut
                         .iter()
                         .map(|a| {
                             let color = match a.0 {
-                                TaskStringTag::Other => model.config.text_color,
-                                TaskStringTag::Context => model.config.context_color,
-                                TaskStringTag::Project => model.config.project_color,
-                                TaskStringTag::Priority => model.config.priority_color,
+                                TaskStringTag::Other => model.config.theme.text,
+                                TaskStringTag::Context => model.config.theme.context,
+                                TaskStringTag::Project => model.config.theme.project,
+                                TaskStringTag::Priority => model.config.theme.priority,
                             };
                             Span::styled(a.1.as_str(), Style::new().set_style(color))
                         })
@@ -148,7 +148,7 @@ fn render_task_list(chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>, model: &mut
             .collect::<Vec<ListItem>>(),
     )
     .block(list_block)
-    .highlight_style(model.config.selected_text);
+    .highlight_style(model.config.theme.selected);
 
     f.render_stateful_widget(list_widget, chunks[1], &mut model.list_state);
 }
@@ -198,7 +198,7 @@ fn render_saved_searches_list(model: &mut Model, chunks: &std::rc::Rc<[Rect]>, f
             .map(|a| ListItem::from(Line::raw(a)))
             .collect::<List>()
             .block(list_block)
-            .highlight_style(model.config.selected_text);
+            .highlight_style(model.config.theme.selected);
         f.render_widget(Clear, rect);
         f.render_stateful_widget(list, rect, &mut model.saved_searches.list_state)
     }
