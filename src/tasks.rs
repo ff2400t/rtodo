@@ -40,7 +40,7 @@ impl Task {
         Self { done, text, arr }
     }
 
-    pub fn toggle_done(&mut self) -> Option<Task> {
+    pub fn toggle_done(&mut self) -> Option<String> {
         const PRIORITY_KEY: &str = "Pri:";
         if self.done {
             self.done = false;
@@ -97,7 +97,7 @@ impl Task {
             self.arr = text_to_vec(&self.text);
             if let Some((old, new)) = due_date {
                 let text = text.replace(&old, &new);
-                return Some(Task::new(&text));
+                return Some(text);
             }
         };
         None
@@ -418,7 +418,7 @@ mod test {
         .iter()
         .map(|t| Task::new(&t))
         .map(|mut t1| {
-            let t2 = t1.toggle_done().unwrap().text.to_string();
+            let t2 = t1.toggle_done().unwrap();
             (t1.text.to_string(), t2)
         })
         .collect();

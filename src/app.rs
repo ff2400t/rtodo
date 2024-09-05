@@ -37,6 +37,7 @@ pub struct Model {
     pub app_state: AppState,
     pub first_done_index: usize,
     pub tasks: Vec<Task>,
+    pub nums: Vec<String>,
     pub filtered_tasks: Vec<Task>,
     pub input: Input,
     pub projects: HashSet<String>,
@@ -95,13 +96,18 @@ impl Model {
             }
         };
 
+        let nums: Vec<String> = (0..tasks.len())
+            .map(|e| e.to_string())
+            .collect::<Vec<String>>();
+
         Self {
             live_state: LiveState::Running,
             app_state: AppState::List,
             list_state: ListState::default(),
             tasks,
-            first_done_index,
+            nums,
             filtered_tasks: Vec::new(),
+            first_done_index,
             search: SearchInput::new(),
             input: Input::default(),
             projects,
@@ -152,13 +158,18 @@ impl Model {
         });
     }
 
-    pub fn new_task(&mut self) {
-        let value = self.input.value();
+    pub fn new_task(&mut self, value: String) {
         if !value.trim().is_empty() {
-            let task = Task::new(value);
+            let task = Task::new(&value);
             self.tasks.push(task);
             self.add_to_sets(&value.to_string());
             self.move_done_tasks(self.tasks.len() - 1);
+            let new_num = self.nums.len().to_string();
+            self.nums.push(new_num);
+        }
+
+        if !self.search.is_empty() {
+            self.filter_tasks()
         }
     }
 
@@ -180,11 +191,8 @@ impl Model {
         if only_toggle {
             let task = self.tasks[index].toggle_done();
             self.move_done_tasks(index);
-            if let Some(new_task) = task {
-                self.add_to_sets(&new_task.text);
-                self.tasks.push(new_task);
-                let index = self.tasks.len() - 1;
-                self.move_done_tasks(index);
+            if let Some(new_task_string) = task {
+                self.new_task(new_task_string)
             }
         } else {
             let new_task = Task::new(&value);
@@ -269,6 +277,7 @@ impl Model {
             }
             self.filter_tasks();
         }
+        self.nums.pop();
     }
 
     fn save_search(&mut self) {
@@ -488,7 +497,8 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                         model.update_task(false);
                     }
                     InputState::NewTask | InputState::CopyTask => {
-                        model.new_task();
+                        let value = model.input.value().to_string();
+                        model.new_task(value);
                     }
                 };
             }

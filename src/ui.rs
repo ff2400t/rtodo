@@ -1,11 +1,11 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Style, Styled, Stylize},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph},
     Frame,
 };
-const SPACE_2: &'static str = "  ";
+const SPACE_2: &str = "  ";
 
 use crate::{
     app::{AppState, Autocomplete, InputState, Model},
@@ -175,35 +175,44 @@ fn render_input(chunks: &std::rc::Rc<[Rect]>, model: &mut Model, f: &mut Frame<'
 
 fn render_task_list(chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>, model: &mut Model) {
     let list_block = Block::new().borders(Borders::BOTTOM | Borders::TOP);
-    let list = if model.search.input.value().is_empty() {
-        &model.tasks
-    } else {
-        &model.filtered_tasks
-    };
-    let list_widget = List::new(
-        list.iter()
-            .map(|a| {
-                ListItem::from(Line::from(
-                    a.arr
-                        .iter()
-                        .map(|a| {
-                            let color = match a.0 {
-                                TaskStringTag::Other => model.config.theme.text,
-                                TaskStringTag::Context => model.config.theme.context,
-                                TaskStringTag::Project => model.config.theme.project,
-                                TaskStringTag::Priority => model.config.theme.priority,
-                            };
-                            Span::styled(a.1.as_str(), Style::new().set_style(color))
-                        })
-                        .collect::<Vec<Span>>(),
-                ))
-            })
-            .collect::<Vec<ListItem>>(),
+    let layout = Layout::new(
+        Direction::Horizontal,
+        [Constraint::Max(4), Constraint::Min(10)],
     )
+    .split(chunks[1]);
+    let (list, nums) = if model.search.input.value().is_empty() {
+        (&model.tasks, model.nums.as_slice())
+    } else {
+        (
+            &model.filtered_tasks,
+            &model.nums[0..model.filtered_tasks.len()],
+        )
+    };
+
+    let nums_widget = List::new(nums.iter().map(|a| ListItem::from(Text::raw(a))))
+        .block(list_block.clone())
+        .highlight_style(model.config.theme.selected);
+    let list_widget = List::new(list.iter().map(|a| {
+        ListItem::from(Line::from(
+            a.arr
+                .iter()
+                .map(|a| {
+                    let color = match a.0 {
+                        TaskStringTag::Other => model.config.theme.text,
+                        TaskStringTag::Context => model.config.theme.context,
+                        TaskStringTag::Project => model.config.theme.project,
+                        TaskStringTag::Priority => model.config.theme.priority,
+                    };
+                    Span::styled(a.1.as_str(), Style::new().set_style(color))
+                })
+                .collect::<Vec<Span>>(),
+        ))
+    }))
     .block(list_block)
     .highlight_style(model.config.theme.selected);
 
-    f.render_stateful_widget(list_widget, chunks[1], &mut model.list_state);
+    f.render_stateful_widget(nums_widget, layout[0], &mut model.list_state);
+    f.render_stateful_widget(list_widget, layout[1], &mut model.list_state);
 }
 
 fn render_autocomplete(
