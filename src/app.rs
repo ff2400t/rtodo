@@ -431,11 +431,11 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::Next => {
-            model.list_state.select_next();
+            list_next_cyclic(&mut model.list_state, model.tasks.len());
             None
         }
         Message::Prev => {
-            model.list_state.select_previous();
+            list_prev_cyclic(&mut model.list_state);
             None
         }
         Message::ToggleDone => {
@@ -607,6 +607,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                     Some(Message::AutoCompleteAppend)
                 } else {
                     model.app_state = AppState::List;
+                    model.auto_complete = None;
                     None
                 }
             }
@@ -615,6 +616,7 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
                 if !model.search.prev_value.is_empty() {
                     model.search.input = Input::new(model.search.prev_value.clone());
                 }
+                model.auto_complete = None;
                 None
             }
             KeyCode::Tab => Some(Message::AutoCompleteMove(key_event)),
@@ -663,26 +665,10 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
         }
         Message::AutoCompleteMove(key_event) => {
             if let Some(ref mut ac) = model.auto_complete {
-                if let Some(selected) = ac.list_state.selected() {
-                    if key_event.modifiers.contains(KeyModifiers::SHIFT) {
-                        if selected == 0 {
-                            ac.list_state.select(Some(ac.list.len() - 1))
-                        } else {
-                            ac.list_state.select_previous()
-                        }
-                        model
-                            .auto_complete
-                            .as_mut()
-                            .unwrap()
-                            .list_state
-                            .select_previous();
-                    } else if selected == ac.list.len() {
-                        ac.list_state.select(Some(0))
-                    } else {
-                        ac.list_state.select_next()
-                    }
+                if key_event.modifiers.contains(KeyModifiers::SHIFT) {
+                    list_prev_cyclic(&mut ac.list_state)
                 } else {
-                    ac.list_state.select(Some(0))
+                    list_next_cyclic(&mut ac.list_state, ac.list.len())
                 }
             };
             None
@@ -786,6 +772,30 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             }
             None
         }
+    }
+}
+
+fn list_next_cyclic(list_state: &mut ListState, len: usize) {
+    if let Some(idx) = list_state.selected() {
+        if len - 1 == idx {
+            list_state.select_first()
+        } else {
+            list_state.select_next();
+        }
+    } else {
+        list_state.select_next();
+    }
+}
+
+fn list_prev_cyclic(list_state: &mut ListState) {
+    if let Some(idx) = list_state.selected() {
+        if idx == 0 {
+            list_state.select_last()
+        } else {
+            list_state.select_previous();
+        }
+    } else {
+        list_state.select_previous();
     }
 }
 
