@@ -24,19 +24,11 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
         render_help_view(f, &chunks);
     } else {
         render_task_list(&chunks, f, model);
-        render_statusline(f, &chunks);
         render_saved_searches_list(model, &chunks, f);
 
         match model.app_state {
-            AppState::Edit(_) => {
-                render_input(&chunks, model, f);
-                render_static_search_input(model, f, chunks[0])
-            }
-            // Render this last so that Autocomplete rendering works:w:w
-            AppState::SearchInput => render_active_search_input(model, f, chunks[0]),
-
+            AppState::Edit(_) => render_input(&chunks, model, f),
             AppState::Report => {
-                render_static_search_input(model, f, chunks[0]);
                 let rect = centered_rect(50, 30, chunks[1]);
                 let block = Block::default()
                     .borders(Borders::ALL)
@@ -46,8 +38,22 @@ pub fn view(model: &mut Model, f: &mut Frame<'_>) {
                 f.render_widget(Clear, rect);
                 f.render_widget(para, rect);
             }
-            _ => render_static_search_input(model, f, chunks[0]),
+            _ => {}
         };
+
+        // Render this last so that Autocomplete rendering works:w:w
+        if let AppState::SearchInput = model.app_state {
+            render_active_search_input(model, f, chunks[0])
+        } else {
+            render_static_search_input(model, f, chunks[0]);
+        }
+
+        // Render this last so that Autocomplete rendering works:w:w
+        if let AppState::Goto(ref num) = model.app_state {
+            render_goto_statusline(num, f, &chunks)
+        } else {
+            render_statusline(f, &chunks);
+        }
     }
 }
 
@@ -70,6 +76,7 @@ q - quit
 Q - quit without saving any changes
 s - Save the current state to disk
 ~ - Help
+: - Goto mode similar to vim or helix
 
 Editing
 Ctrl + d - Clear out the current text",
@@ -98,8 +105,6 @@ fn render_statusline(f: &mut Frame<'_>, chunks: &std::rc::Rc<[Rect]>) {
         SPACE_2,
         " q: Quit ",
         SPACE_2,
-        " s: Save ",
-        SPACE_2,
         " /: Search ",
         SPACE_2,
         " x: Delete ",
@@ -122,6 +127,11 @@ fn render_statusline(f: &mut Frame<'_>, chunks: &std::rc::Rc<[Rect]>) {
         })
         .collect::<Vec<Span>>();
     f.render_widget(Line::from(line), chunks[2]);
+}
+
+fn render_goto_statusline(num: &String, f: &mut Frame<'_>, chunks: &std::rc::Rc<[Rect]>) {
+    let line = Span::from(":".to_string() + num);
+    f.render_widget(line, chunks[2]);
 }
 
 fn render_static_search_input(model: &mut Model, f: &mut Frame<'_>, layout: Rect) {

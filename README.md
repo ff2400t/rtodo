@@ -24,6 +24,7 @@ You can also pass a configuration file as an argument using the `-c` flag.  whic
 `l` - load a search
 `a` - save a search to be reused later
 `~` - Help
+`:` - Goto mode similar to vim or helix
 `Ctrl+d` - Clear out the current input in search or while editing a task
 
 ## Searching 

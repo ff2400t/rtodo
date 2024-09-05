@@ -318,6 +318,7 @@ pub enum AppState {
     SearchInput,
     Report,
     Help,
+    Goto(String),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -370,6 +371,8 @@ pub enum Message {
     HandlePaste(String),
     ToggleReport,
     ToggleHelp,
+    GotoStart,
+    GotoKeyInput(KeyEvent),
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -403,6 +406,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('/') => Some(Message::OpenSearch),
             KeyCode::Char('r') => Some(Message::ToggleReport),
             KeyCode::Char('~') => Some(Message::ToggleHelp),
+            KeyCode::Char(':') => Some(Message::GotoStart),
             _ => None,
         },
         AppState::Edit(_) => match key_event.code {
@@ -416,6 +420,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('~') | KeyCode::Char('q') | KeyCode::Esc => Some(Message::ToggleHelp),
             _ => None,
         },
+        AppState::Goto(_) => Some(Message::GotoKeyInput(key_event)),
     }
 }
 
@@ -753,6 +758,32 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             } else {
                 model.app_state = AppState::Help;
             };
+            None
+        }
+        Message::GotoStart => {
+            model.app_state = AppState::Goto("".to_string());
+            None
+        }
+        Message::GotoKeyInput(key_event) => {
+            match key_event.code {
+                KeyCode::Char(d) if d.is_ascii_digit() => {
+                    if let AppState::Goto(ref mut str) = model.app_state {
+                        str.push(d)
+                    };
+                }
+                KeyCode::Enter => {
+                    if let AppState::Goto(ref str) = model.app_state {
+                        if let Ok(num) = str.parse::<usize>() {
+                            model.list_state.select(Some(num))
+                        }
+                    }
+                    model.app_state = AppState::List;
+                }
+                KeyCode::Esc => {
+                    model.app_state = AppState::List;
+                }
+                _ => {}
+            }
             None
         }
     }
