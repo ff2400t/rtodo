@@ -308,6 +308,7 @@ pub enum AppState {
     SavedSearches,
     SearchInput,
     Report,
+    Help,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -359,6 +360,7 @@ pub enum Message {
     HandleSavedSearchKeys(KeyEvent),
     HandlePaste(String),
     ToggleReport,
+    ToggleHelp,
 }
 
 fn handle_events(model: &Model) -> color_eyre::Result<Option<Message>> {
@@ -382,7 +384,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('q') => Some(Message::Quit),
             KeyCode::Char('Q') => Some(Message::QuitWithoutSave),
             KeyCode::Char('d') => Some(Message::ToggleDone),
-            KeyCode::Char('D') => Some(Message::DeleteTask),
+            KeyCode::Char('x') => Some(Message::DeleteTask),
             KeyCode::Char('e') => Some(Message::OpenInput(InputState::Edit)),
             KeyCode::Char('n') => Some(Message::OpenInput(InputState::NewTask)),
             KeyCode::Char('c') => Some(Message::OpenInput(InputState::CopyTask)),
@@ -391,6 +393,7 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
             KeyCode::Char('l') => Some(Message::OpenSavedSearchesView),
             KeyCode::Char('/') => Some(Message::OpenSearch),
             KeyCode::Char('r') => Some(Message::ToggleReport),
+            KeyCode::Char('~') => Some(Message::ToggleHelp),
             _ => None,
         },
         AppState::Edit(_) => match key_event.code {
@@ -400,6 +403,10 @@ fn handle_key(model: &Model, key_event: KeyEvent) -> Option<Message> {
         AppState::SavedSearches => Some(Message::HandleSavedSearchKeys(key_event)),
         AppState::SearchInput => Some(Message::SearchKeyInput(key_event)),
         AppState::Report => Some(Message::ToggleReport),
+        AppState::Help => match key_event.code {
+            KeyCode::Char('~') | KeyCode::Char('q') | KeyCode::Esc => Some(Message::ToggleHelp),
+            _ => None,
+        },
     }
 }
 
@@ -723,6 +730,14 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             } else {
                 model.app_state = AppState::Report;
                 model.report = model.gen_report();
+            };
+            None
+        }
+        Message::ToggleHelp => {
+            if let AppState::Help = model.app_state {
+                model.app_state = AppState::List;
+            } else {
+                model.app_state = AppState::Help;
             };
             None
         }

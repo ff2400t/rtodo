@@ -82,7 +82,6 @@ pub fn get_config() -> Config {
     };
 
     if let Ok(args) = parse_args() {
-        println!("{:?}", args);
         if let Some(path) = args.config {
             if let Ok(config_path) = fs::canonicalize(path) {
                 if let Ok(string) = read_to_string(&config_path) {

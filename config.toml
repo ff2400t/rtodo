@@ -1,0 +1,20 @@
+# The default todo file path all of these should be full path
+file_path: "",
+
+# The file the which stores the saved searches
+# the default path is in configuration folder next to the config.toml
+searches_path: "",
+
+# Should there be a start date when you create a new task
+add_creation_date: true,
+
+# Simple filtering to move done task to the end of the list
+move_done_to_end: true,
+
+[theme]
+completed_text = "#6b7280"
+text = "#22c55e"
+priority = "#10b981"
+project = "#f59eb"
+selected = "#ff240"
+text = "#e2e8f0"

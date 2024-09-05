@@ -5,6 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Padding, Paragraph},
     Frame,
 };
+const SPACE_2: &'static str = "  ";
 
 use crate::{
     app::{AppState, Autocomplete, InputState, Model},
@@ -14,68 +15,109 @@ use crate::{
 pub fn view(model: &mut Model, f: &mut Frame<'_>) {
     let outer_block = Block::new().padding(Padding::uniform(1));
 
-    let inner_block = outer_block.inner(f.area());
-
+    let inner_area = outer_block.inner(f.area());
     let chunks = Layout::default()
         .constraints([Constraint::Max(1), Constraint::Min(8), Constraint::Max(1)])
-        .split(inner_block);
+        .split(inner_area);
 
-    render_task_list(&chunks, f, model);
-    render_statusline(f, &chunks);
-    render_saved_searches_list(model, &chunks, f);
+    if let AppState::Help = model.app_state {
+        render_help_view(f, &chunks);
+    } else {
+        render_task_list(&chunks, f, model);
+        render_statusline(f, &chunks);
+        render_saved_searches_list(model, &chunks, f);
 
-    match model.app_state {
-        AppState::Edit(_) => {
-            render_input(&chunks, model, f);
-            render_static_search_input(model, f, chunks[0])
-        }
-        // Render this last so that Autocomplete rendering works:w:w
-        AppState::SearchInput => render_active_search_input(model, f, chunks[0]),
+        match model.app_state {
+            AppState::Edit(_) => {
+                render_input(&chunks, model, f);
+                render_static_search_input(model, f, chunks[0])
+            }
+            // Render this last so that Autocomplete rendering works:w:w
+            AppState::SearchInput => render_active_search_input(model, f, chunks[0]),
 
-        AppState::Report => {
-            render_static_search_input(model, f, chunks[0]);
-            let rect = centered_rect(50, 30, chunks[1]);
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .title_top("Report")
-                .title_alignment(ratatui::layout::Alignment::Center);
-            let para = Paragraph::new(model.report.clone()).block(block);
-            f.render_widget(Clear, rect);
-            f.render_widget(para, rect);
-        }
-        _ => render_static_search_input(model, f, chunks[0]),
-    };
+            AppState::Report => {
+                render_static_search_input(model, f, chunks[0]);
+                let rect = centered_rect(50, 30, chunks[1]);
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .title_top("Report")
+                    .title_alignment(ratatui::layout::Alignment::Center);
+                let para = Paragraph::new(model.report.clone()).block(block);
+                f.render_widget(Clear, rect);
+                f.render_widget(para, rect);
+            }
+            _ => render_static_search_input(model, f, chunks[0]),
+        };
+    }
+}
+
+fn render_help_view(f: &mut Frame, chunks: &std::rc::Rc<[Rect]>) {
+    let help_block = Block::new().borders(Borders::BOTTOM | Borders::TOP);
+    let p = Paragraph::new(
+        "d or space - Toggle Done for the Task
+x - Delete Task
+j or 🡣 - Move to next task
+k or 🡩 - Move to prev task
+n - Start writing a new task
+e - Edit the current task
+c - Copy this task and open the editor modal
+r - open the report window
+Ctrl+d - Clear out the current input
+/ - start the search input
+l - load a search
+a - save a search to be reused later
+q - quit
+Q - quit without saving any changes
+s - Save the current state to disk
+~ - Help
+
+Editing
+Ctrl + d - Clear out the current text",
+    )
+    .block(help_block);
+    f.render_widget(p, chunks[1]);
+    // Status line
+    f.render_widget(
+        Line::from(Span::styled(
+            " ESC: Task View ",
+            Style::default().on_gray().black(),
+        )),
+        chunks[2],
+    );
 }
 
 fn render_statusline(f: &mut Frame<'_>, chunks: &std::rc::Rc<[Rect]>) {
-    let space_2 = "  ";
     let options = [
+        " ~: Help ",
+        SPACE_2,
         " d: Toggle ",
-        space_2,
+        SPACE_2,
         " e: Edit ",
-        space_2,
+        SPACE_2,
+        " n: New Task ",
+        SPACE_2,
         " q: Quit ",
-        space_2,
+        SPACE_2,
         " s: Save ",
-        space_2,
+        SPACE_2,
         " /: Search ",
-        space_2,
-        " D: Delete ",
-        space_2,
+        SPACE_2,
+        " x: Delete ",
+        SPACE_2,
         " l: load Search",
-        space_2,
+        SPACE_2,
         " a: Save Search",
-        space_2,
+        SPACE_2,
         " r: Report",
     ];
 
     let line = options
         .iter()
         .map(|a| {
-            if **a != *space_2 {
+            if **a != *SPACE_2 {
                 Span::styled(*a, Style::default().on_gray().black())
             } else {
-                Span::raw(space_2)
+                Span::raw(SPACE_2)
             }
         })
         .collect::<Vec<Span>>();
