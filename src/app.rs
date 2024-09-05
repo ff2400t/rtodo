@@ -480,14 +480,18 @@ fn update(model: &mut Model, msg: Message) -> Option<Message> {
             None
         }
         Message::InputAction(input_state) => {
-            match input_state {
-                InputState::Edit => {
-                    model.update_task(false);
-                }
-                InputState::NewTask | InputState::CopyTask => {
-                    model.new_task();
-                }
-            };
+            if model.input.value().trim().is_empty() {
+                model.delete_selected_task()
+            } else {
+                match input_state {
+                    InputState::Edit => {
+                        model.update_task(false);
+                    }
+                    InputState::NewTask | InputState::CopyTask => {
+                        model.new_task();
+                    }
+                };
+            }
             model.app_state = AppState::List;
             None
         }
