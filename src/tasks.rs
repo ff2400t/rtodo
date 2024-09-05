@@ -60,7 +60,7 @@ impl Task {
             let rest = text.get(2..).unwrap();
             let (rest, completion_date) = get_date(rest.trim_start());
             let (rest, start_date) = get_date(rest.trim_start());
-            let date = if completion_date.is_empty() && start_date.is_empty() {
+            let date = if !completion_date.is_empty() && !start_date.is_empty() {
                 start_date.to_string() + " "
             } else {
                 "".to_string()
