@@ -174,6 +174,7 @@ fn render_input(chunks: &std::rc::Rc<[Rect]>, model: &mut Model, f: &mut Frame<'
                 .borders(Borders::ALL)
                 .title("Input"),
         );
+    f.render_widget(Clear, layout);
     f.render_widget(input_widget, layout);
     //     // Put cursor past the end of the input text
     let cursor_x = layout.x + ((model.input.visual_cursor()).max(scroll) - scroll) as u16 + 1;
