@@ -20,6 +20,7 @@ pub enum TaskStringTag {
     Context,
     Priority,
     Project,
+    KV,
 }
 
 #[derive(Clone, Debug)]
@@ -36,7 +37,7 @@ impl Task {
             (PENDING_PREFIX.to_string() + text).to_string()
         };
 
-        let arr = text_to_vec(&text);
+        let arr = parse_task(&text);
         Self { done, text, arr }
     }
 
@@ -67,7 +68,7 @@ impl Task {
             };
             let rest = rest.trim();
             self.text = format!("{PENDING_PREFIX}{pri_new}{date}{rest}").replace(&pri_old, "");
-            self.arr = text_to_vec(&self.text);
+            self.arr = parse_task(&self.text);
         } else {
             self.done = true;
             let text = self.text.clone();
@@ -94,7 +95,7 @@ impl Task {
             let due_date = try_rec(rest);
 
             self.text = format!("{DONE_PREFIX}{date}{rest}{priority}");
-            self.arr = text_to_vec(&self.text);
+            self.arr = parse_task(&self.text);
             if let Some((old, new)) = due_date {
                 let text = text.replace(&old, &new);
                 return Some(text);
@@ -234,13 +235,8 @@ fn parse_rec(input: &str) -> Option<(bool, u64, char)> {
 
     Some((strict, num, duration))
 }
-enum ParseTaskState {
-    TryMatch,
-    Context,
-    Project,
-}
 
-fn text_to_vec(text: &str) -> Vec<TaskSection> {
+fn parse_task(text: &str) -> Vec<TaskSection> {
     let prefix = if text.starts_with(PENDING_PREFIX) {
         PENDING_PREFIX
     } else {
@@ -250,68 +246,38 @@ fn text_to_vec(text: &str) -> Vec<TaskSection> {
     let text = text.strip_prefix(prefix).unwrap();
     let (rest, pri) = get_priority(text);
     if !pri.is_empty() {
-        arr.push(TaskSection(TaskStringTag::Priority, format!("({pri})")))
-    }
+        arr.push(TaskSection(TaskStringTag::Priority, format!("({pri})")));
+    };
+    let mut current_state = String::new();
 
-    let chars = rest.chars().enumerate();
-    let mut state = ParseTaskState::TryMatch;
-    let mut start_index = 0;
-
-    for (idx, char) in chars {
-        match state {
-            ParseTaskState::TryMatch => {
-                if char == '@' || char == '+' {
-                    if idx == 0 {
-                        state = if char == '@' {
-                            ParseTaskState::Context
-                        } else {
-                            ParseTaskState::Project
-                        };
-                    } else if utf8_slice::slice(rest, idx - 1, idx) == " " {
-                        state = if char == '@' {
-                            ParseTaskState::Context
-                        } else {
-                            ParseTaskState::Project
-                        };
-                        let section = utf8_slice::slice(rest, start_index, idx).to_string();
-                        arr.push(TaskSection(TaskStringTag::Other, section));
-                        start_index = idx;
-                    }
-                }
+    for word in rest.split_ascii_whitespace() {
+        if word.starts_with("@") {
+            if !current_state.is_empty() {
+                arr.push(TaskSection(TaskStringTag::Other, current_state));
+                current_state = String::new();
             }
-            ParseTaskState::Context => {
-                if char == ' ' {
-                    let section = utf8_slice::slice(rest, start_index, idx).to_string();
-                    arr.push(TaskSection(TaskStringTag::Context, section));
-                    state = ParseTaskState::TryMatch;
-                    start_index = idx;
-                }
+            arr.push(TaskSection(TaskStringTag::Context, " ".to_string() + word));
+        } else if word.starts_with("+") {
+            if !current_state.is_empty() {
+                arr.push(TaskSection(TaskStringTag::Other, current_state));
+                current_state = String::new();
             }
-            ParseTaskState::Project => {
-                if char == ' ' {
-                    let section = utf8_slice::slice(rest, start_index, idx).to_string();
-                    arr.push(TaskSection(TaskStringTag::Project, section));
-                    state = ParseTaskState::TryMatch;
-                    start_index = idx;
-                }
+            arr.push(TaskSection(TaskStringTag::Project, " ".to_string() + word));
+        } else if word.contains(":") {
+            if !current_state.is_empty() {
+                arr.push(TaskSection(TaskStringTag::Other, current_state));
+                current_state = String::new();
             }
+            arr.push(TaskSection(TaskStringTag::KV, " ".to_string() + word));
+        } else {
+            current_state.push_str(" ");
+            current_state.push_str(word);
         }
     }
 
-    let section = utf8_slice::from(rest, start_index).to_string();
-    let tag = match state {
-        ParseTaskState::Context => TaskStringTag::Context,
-        ParseTaskState::Project => TaskStringTag::Project,
-        ParseTaskState::TryMatch => TaskStringTag::Other,
-    };
-
-    //     if let Some(section) = get_priority(arr.get(0).) {
-
-    // }
-
-    //     let arr = if get_priority(arr[0])
-    arr.push(TaskSection(tag, section));
-
+    if !current_state.is_empty() {
+        arr.push(TaskSection(TaskStringTag::Other, current_state));
+    }
     arr
 }
 

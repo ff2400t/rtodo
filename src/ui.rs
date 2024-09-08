@@ -213,6 +213,7 @@ fn render_task_list(chunks: &std::rc::Rc<[Rect]>, f: &mut Frame<'_>, model: &mut
                         TaskStringTag::Context => model.config.theme.context,
                         TaskStringTag::Project => model.config.theme.project,
                         TaskStringTag::Priority => model.config.theme.priority,
+                        TaskStringTag::KV => model.config.theme.kv,
                     };
                     Span::styled(a.1.as_str(), Style::new().set_style(color))
                 })

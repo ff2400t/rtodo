@@ -31,6 +31,8 @@ pub struct Theme {
     pub selected: Color,
     #[serde(with = "color_to_tui")]
     pub text: Color,
+    #[serde(with = "color_to_tui")]
+    pub kv: Color,
 }
 
 impl Default for Theme {
@@ -42,6 +44,7 @@ impl Default for Theme {
             context: tailwind::GREEN.c500,
             project: tailwind::AMBER.c500,
             priority: tailwind::EMERALD.c500,
+            kv: tailwind::PURPLE.c500,
         }
     }
 }
